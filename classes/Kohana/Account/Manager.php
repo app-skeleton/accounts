@@ -34,7 +34,7 @@ class Kohana_Account_Manager {
     const STATUS_USER_LEFT          = 'left';
     const PERM_OWNER                = 'owner';
     const PERM_ADMIN                = 'admin';
-    const PERM_BILLING_LIAISON      = 'billing_liaison';
+    const PERM_ACCOUNT_MANAGER      = 'account_manager';
     const PERM_CREATE_PROJECTS      = 'create_projects';
 
     /**
@@ -94,6 +94,19 @@ class Kohana_Account_Manager {
             $errors = $e->errors('models/'.i18n::lang().'/account', FALSE);
             throw new Validation_Exception($errors);
         }
+    }
+
+    /**
+     * Rename an account
+     *
+     * @param   int     $account_id
+     * @param   string  $name
+     */
+    public function rename_account($account_id, $name)
+    {
+        $this->update_account($account_id, array(
+            'name' => $name
+        ));
     }
 
     /**
