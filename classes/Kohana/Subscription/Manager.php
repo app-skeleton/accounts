@@ -21,10 +21,16 @@ class Kohana_Subscription_Manager {
     protected $_subscription_model;
 
     /**
-     * Create aa subscription
+     * @var bool                    Whether to cache subscription data (it's is frequently queried)
+     */
+    public static $use_cache = TRUE;
+
+    /**
+     * Create a subscription
      *
-     * @param   array   $values
+     * @param   array $values
      * @throws  Validation_Exception
+     * @throws  Exception
      * @return  array
      */
     public function create_subscription($values)
@@ -37,15 +43,40 @@ class Kohana_Subscription_Manager {
             $values['paused'] = 0;
             $values['canceled'] = 0;
 
+            // Begin transaction
+            $subscription_model->begin();
+
             // Create the subscription
-            $subscription_model->values($values)->save();
+            $subscription_model
+                ->values($values)
+                ->save();
+
+            if (self::$use_cache)
+            {
+                // Save subscription to cache
+                Subscription_Cache::instance()->save($subscription_model->get('account_id'), $subscription_model->as_array());
+            }
+
+            // Everything is fine, commit
+            $subscription_model->commit();
 
             return $subscription_model->as_array();
         }
         catch (ORM_Validation_Exception $e)
         {
+            // Validation failed, rollback
+            $subscription_model->rollback();
+
             $errors = $e->errors('models/'.i18n::lang().'/subscription', FALSE);
             throw new Validation_Exception($errors);
+        }
+        catch (Exception $e)
+        {
+            // Something went wrong, rollback
+            $subscription_model->rollback();
+
+            // Re-throw the exception
+            throw $e;
         }
     }
 
@@ -56,6 +87,7 @@ class Kohana_Subscription_Manager {
      * @param   array   $values
      * @throws  Validation_Exception
      * @throws  Kohana_Exception
+     * @throws  Exception
      * @return  array
      */
     public function update_subscription($account_id, $values)
@@ -69,10 +101,43 @@ class Kohana_Subscription_Manager {
             throw new Kohana_Exception('Can not load subscription for account id: '.$account_id);
         }
 
-        // Update the subscription
-        $subscription_model->values($values)->save();
+        // Begin transaction
+        $subscription_model->begin();
 
-        return $subscription_model->as_array();
+        try
+        {
+            // Update the subscription
+            $subscription_model
+                ->values($values)
+                ->save();
+
+            if (self::$use_cache)
+            {
+                // Save subscription to cache
+                Subscription_Cache::instance()->save($account_id, $subscription_model->as_array());
+            }
+
+            // Everything is fine, commit
+            $subscription_model->commit();
+
+            return $subscription_model->as_array();
+        }
+        catch (ORM_Validation_Exception $e)
+        {
+            // Validation failed, rollback
+            $subscription_model->rollback();
+
+            $errors = $e->errors('models/'.i18n::lang().'/subscription', FALSE);
+            throw new Validation_Exception($errors);
+        }
+        catch (Exception $e)
+        {
+            // Something went wrong, rollback
+            $subscription_model->rollback();
+
+            // Re-throw the exception
+            throw $e;
+        }
     }
 
     /**
@@ -84,16 +149,29 @@ class Kohana_Subscription_Manager {
      */
     public function get_subscription_data($account_id)
     {
-        $subscription_model = ORM::factory('Subscription')
-            ->where('account_id', '=', DB::expr($account_id))
-            ->find();
+        $subscription_cache = self::$use_cache ? Subscription_Cache::instance() : NULL;
 
-        if ( ! $subscription_model->loaded())
+        if ( ! self::$use_cache || ($subscription_data = $subscription_cache->load($account_id)) === NULL)
         {
-            throw new Kohana_Exception('Can not load subscription for account id: '.$account_id);
+            $subscription_model = ORM::factory('Subscription')
+                ->where('account_id', '=', DB::expr($account_id))
+                ->find();
+
+            if ( ! $subscription_model->loaded())
+            {
+                throw new Kohana_Exception('Can not load subscription for account id: '.$account_id);
+            }
+
+            $subscription_data = $subscription_model->as_array();
+
+            if (self::$use_cache)
+            {
+                // Save data to cache
+                $subscription_cache->save($account_id, $subscription_data);
+            }
         }
 
-        return $subscription_model->as_array();
+        return $subscription_data;
     }
 
     /**
@@ -131,7 +209,9 @@ class Kohana_Subscription_Manager {
         try
         {
             // Update the `canceled` status
-            $subscription_model->set('canceled', 1)->save();
+            $subscription_model
+                ->set('canceled', 1)
+                ->save();
 
             // Create an account deletion request
             ORM::factory('Account_Deletion_Request')
@@ -140,12 +220,18 @@ class Kohana_Subscription_Manager {
                 ->set('requested_on', date('Y-m-d H:i:s'))
                 ->save();
 
+            if (self::$use_cache)
+            {
+                // Update the cache
+                Subscription_Cache::instance()->save($account_id, $subscription_model->as_array());
+            }
+
             // Everything is fine, commit
             $subscription_model->commit();
         }
         catch (Exception $e)
         {
-            // Problems with the database
+            // Something went wrong, rollback
             $subscription_model->rollback();
 
             // Re-throw exception
@@ -186,12 +272,18 @@ class Kohana_Subscription_Manager {
             // Delete the deletion request for this account
             ORM::factory('Account_Deletion_Request')->delete_all($account_id);
 
+            if (self::$use_cache)
+            {
+                // Update the cache
+                Subscription_Cache::instance()->save($account_id, $subscription_model->as_array());
+            }
+
             // Everything is fine, commit
             $subscription_model->commit();
         }
         catch (Exception $e)
         {
-            // Problems with the database
+            // Something went wrong, rollback
             $subscription_model->rollback();
 
             // Re-throw exception
@@ -301,27 +393,45 @@ class Kohana_Subscription_Manager {
      * @param   int     $account_id
      * @param   int     $expires_on     In timestamp format
      * @param   int     $payment_id
+     * @throws  Kohana_Exception
      * @throws  Exception
      */
     public function extend_subscription($account_id, $expires_on, $payment_id = NULL)
     {
-        $subscription_model = $this->subscription_model();
+        $subscription_model = ORM::factory('Subscription')
+            ->where('account_id', '=', DB::expr($account_id))
+            ->find();
+
+        if ( ! $subscription_model->loaded())
+        {
+            throw new Kohana_Exception('Can not load subscription for account id: '.$account_id);
+        }
+
+        // Begin transaction
         $subscription_model->begin();
 
         try
         {
             // Set a new expiration date for the subscription
-            $subscription_data = $this->update_subscription($account_id, array('expires_on' => date('Y-m-d H:i:s', $expires_on)));
+            $subscription_model
+                ->set('expires_on', date('Y-m-d H:i:s', $expires_on))
+                ->save();
 
             // Create a subscription event
             ORM::factory('Subscription_Event')
-                ->set('subscription_id', $subscription_data['subscription_id'])
-                ->set('from_plan', $subscription_data['plan'])
-                ->set('to_plan', $subscription_data['plan'])
+                ->set('subscription_id', $subscription_model->get('subscription_id'))
+                ->set('from_plan', $subscription_model->get('plan'))
+                ->set('to_plan', $subscription_model->get('plan'))
                 ->set('date', date('Y-m-d H:i:s'))
                 ->set('expires_on', date('Y-m-d H:i:s', $expires_on))
                 ->set('payment_id', $payment_id)
                 ->save();
+
+            if (self::$use_cache)
+            {
+                // Update the cache
+                Subscription_Cache::instance()->save($account_id, $subscription_model->as_array());
+            }
 
             // Everything is fine, commit
             $subscription_model->commit();
@@ -329,7 +439,7 @@ class Kohana_Subscription_Manager {
         }
         catch (Exception $e)
         {
-            // Problem with the database, rollback
+            // Something went wrong, rollback
             $subscription_model->rollback();
 
             // Re-throw the exception
@@ -344,10 +454,21 @@ class Kohana_Subscription_Manager {
      * @param   string  $plan
      * @param   int     $expires_on     In timestamp format
      * @param   int     $payment_id
+     * @throws  Kohana_Exception
+     * @throws  Exception
      */
     public function change_subscription_plan($account_id, $plan, $expires_on, $payment_id = NULL)
     {
-        $subscription_model = $this->subscription_model();
+        $subscription_model = ORM::factory('Subscription')
+            ->where('account_id', '=', DB::expr($account_id))
+            ->find();
+
+        if ( ! $subscription_model->loaded())
+        {
+            throw new Kohana_Exception('Can not load subscription for account id: '.$account_id);
+        }
+
+        // Begin transaction
         $subscription_model->begin();
 
         try
@@ -355,20 +476,26 @@ class Kohana_Subscription_Manager {
             $subscription_data = $this->get_subscription_data($account_id);
 
             // Set a new expiration date and plan for the subscription
-            $this->update_subscription($account_id, array(
-                'plan' => $plan,
-                'expires_on' => date('Y-m-d H:i:s', $expires_on)
-            ));
+            $subscription_model
+                ->set('plan', $plan)
+                ->set('expires_on', date('Y-m-d H:i:s', $expires_on))
+                ->save();
 
             // The update was successful, create a subscription event
             ORM::factory('Subscription_Event')
-                ->set('subscription_id', $subscription_data['subscription_id'])
-                ->set('from_plan', $subscription_data['plan'])
+                ->set('subscription_id', $subscription_model->get('subscription_id'))
+                ->set('from_plan', $subscription_model->get('plan'))
                 ->set('to_plan', $plan)
                 ->set('date', date('Y-m-d H:i:s'))
                 ->set('expires_on', date('Y-m-d H:i:s', $expires_on))
                 ->set('payment_id', $payment_id)
                 ->save();
+
+            if (self::$use_cache)
+            {
+                // Update the cache
+                Subscription_Cache::instance()->save($account_id, $subscription_model->as_array());
+            }
 
             // Everything is fine, commit
             $subscription_model->commit();
@@ -376,8 +503,11 @@ class Kohana_Subscription_Manager {
         }
         catch (Exception $e)
         {
-            // Problem with the database, rollback
+            // Something went wrong, rollback
             $subscription_model->rollback();
+
+            // Re-throw the exception
+            throw $e;
         }
     }
 
