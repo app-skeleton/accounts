@@ -70,6 +70,17 @@ class Kohana_Subscription_Cache  {
     }
 
     /**
+     * Delete data from cache
+     *
+     * @param   $account_id
+     */
+    public function delete($account_id)
+    {
+        $key = self::$prefix.$account_id;
+        $this->_client->delete($key);
+    }
+
+    /**
      * Returns a singleton instance of the class
      *
      * @return  Account_Cache
