@@ -86,7 +86,7 @@ class Kohana_Subscription_Manager {
      * @param   int     $account_id
      * @param   array   $values
      * @throws  Validation_Exception
-     * @throws  Kohana_Exception
+     * @throws  Subscription_Exception
      * @throws  Exception
      * @return  array
      */
@@ -98,7 +98,7 @@ class Kohana_Subscription_Manager {
 
         if ( ! $subscription_model->loaded())
         {
-            throw new Kohana_Exception('Can not load subscription for account id: '.$account_id);
+            throw new Subscription_Exception('Can not load subscription for account id: '.$account_id);
         }
 
         // Begin transaction
@@ -144,7 +144,7 @@ class Kohana_Subscription_Manager {
      * Get data about a subscription
      *
      * @param   int     $account_id
-     * @throws  Kohana_Exception
+     * @throws  Subscription_Exception
      * @return  array
      */
     public function get_subscription_data($account_id)
@@ -159,7 +159,7 @@ class Kohana_Subscription_Manager {
 
             if ( ! $subscription_model->loaded())
             {
-                throw new Kohana_Exception('Can not load subscription for account id: '.$account_id);
+                throw new Subscription_Exception('Can not load subscription for account id: '.$account_id);
             }
 
             $subscription_data = $subscription_model->as_array();
@@ -189,7 +189,7 @@ class Kohana_Subscription_Manager {
      *
      * @param   int     $account_id
      * @param   int     $requested_by
-     * @throws  Kohana_Exception
+     * @throws  Subscription_Exception
      * @throws  Exception
      */
     public function cancel_subscription($account_id, $requested_by)
@@ -200,7 +200,7 @@ class Kohana_Subscription_Manager {
 
         if ( ! $subscription_model->loaded())
         {
-            throw new Kohana_Exception('Can not load subscription for account id: '.$account_id);
+            throw new Subscription_Exception('Can not load subscription for account id: '.$account_id);
         }
 
         // Begin transaction
@@ -243,7 +243,7 @@ class Kohana_Subscription_Manager {
      * Restore a subscription
      *
      * @param   int     $account_id
-     * @throws  Kohana_Exception
+     * @throws  Subscription_Exception
      * @throws  Exception
      */
     public function restore_subscription($account_id)
@@ -254,7 +254,7 @@ class Kohana_Subscription_Manager {
 
         if ( ! $subscription_model->loaded())
         {
-            throw new Kohana_Exception('Can not load subscription for account id: '.$account_id);
+            throw new Subscription_Exception('Can not load subscription for account id: '.$account_id);
         }
 
         // Begin transaction
@@ -393,7 +393,7 @@ class Kohana_Subscription_Manager {
      * @param   int     $account_id
      * @param   int     $expires_on     In timestamp format
      * @param   int     $payment_id
-     * @throws  Kohana_Exception
+     * @throws  Subscription_Exception
      * @throws  Exception
      */
     public function extend_subscription($account_id, $expires_on, $payment_id = NULL)
@@ -404,7 +404,7 @@ class Kohana_Subscription_Manager {
 
         if ( ! $subscription_model->loaded())
         {
-            throw new Kohana_Exception('Can not load subscription for account id: '.$account_id);
+            throw new Subscription_Exception('Can not load subscription for account id: '.$account_id);
         }
 
         // Begin transaction
@@ -454,7 +454,7 @@ class Kohana_Subscription_Manager {
      * @param   string  $plan
      * @param   int     $expires_on     In timestamp format
      * @param   int     $payment_id
-     * @throws  Kohana_Exception
+     * @throws  Subscription_Exception
      * @throws  Exception
      */
     public function change_subscription_plan($account_id, $plan, $expires_on, $payment_id = NULL)
@@ -465,7 +465,7 @@ class Kohana_Subscription_Manager {
 
         if ( ! $subscription_model->loaded())
         {
-            throw new Kohana_Exception('Can not load subscription for account id: '.$account_id);
+            throw new Subscription_Exception('Can not load subscription for account id: '.$account_id);
         }
 
         // Begin transaction

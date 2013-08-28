@@ -70,7 +70,7 @@ class Kohana_Account_Manager {
      * @param   int     $account_id
      * @param   array   $values
      * @throws  Validation_Exception
-     * @throws  Kohana_Exception
+     * @throws  Account_Exception
      * @return  array
      */
     public function update_account($account_id, $values)
@@ -79,7 +79,7 @@ class Kohana_Account_Manager {
 
         if ( ! $account_model->loaded())
         {
-            throw new Kohana_Exception('Can not load account with id: '.$account_id);
+            throw new Account_Exception('Can not load account with id: '.$account_id);
         }
 
         try
@@ -113,7 +113,7 @@ class Kohana_Account_Manager {
      * Get data about an account
      *
      * @param   int $account_id
-     * @throws  Kohana_Exception
+     * @throws  Account_Exception
      * @return  array
      */
     public function get_account_data($account_id)
@@ -122,7 +122,7 @@ class Kohana_Account_Manager {
 
         if ( ! $account_model->loaded())
         {
-            throw new Kohana_Exception('Can not load account with id: '.$account_id);
+            throw new Account_Exception('Can not load account with id: '.$account_id);
         }
 
         return $account_model->as_array();
@@ -132,7 +132,7 @@ class Kohana_Account_Manager {
      * Delete an account
      *
      * @param   int     $account_id
-     * @throws  Kohana_Exception
+     * @throws  Account_Exception
      */
     public function delete_account($account_id)
     {
@@ -140,7 +140,7 @@ class Kohana_Account_Manager {
 
         if ( ! $account_model->loaded())
         {
-            throw new Kohana_Exception('Can not load account with id: '.$account_id);
+            throw new Account_Exception('Can not load account with id: '.$account_id);
         }
 
         // Delete account
@@ -253,7 +253,7 @@ class Kohana_Account_Manager {
      * @param   int     $user_id
      * @param   int     $remover_id
      * @param   string  $leaving_message
-     * @throws  Kohana_Exception
+     * @throws  Account_Exception
      * @throws  Exception
      */
     public function remove_user($account_id, $user_id, $remover_id, $leaving_message = NULL)
@@ -268,7 +268,7 @@ class Kohana_Account_Manager {
         // Make sure the user is not the account owner
         if ($user_id == $owner_data['user_id'])
         {
-            throw new Kohana_Exception('The account owner can not be removed.');
+            throw new Account_Exception('The account owner can not be removed.');
         }
 
         // Check if the user removed himself and wants to send a leaving email to his inviter

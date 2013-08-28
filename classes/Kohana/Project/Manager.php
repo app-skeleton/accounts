@@ -58,7 +58,7 @@ class Kohana_Project_Manager {
      * @param   array   $values
      * @return  array
      * @throws  Validation_Exception
-     * @throws  Kohana_Exception
+     * @throws  Project_Exception
      */
     public function update_project($project_id, $values)
     {
@@ -66,7 +66,7 @@ class Kohana_Project_Manager {
 
         if ( ! $project_model->loaded())
         {
-            throw new Kohana_Exception('Can not load project with id: '.$project_id);
+            throw new Project_Exception('Can not load project with id: '.$project_id);
         }
 
         try
@@ -99,7 +99,7 @@ class Kohana_Project_Manager {
      *
      * @param   int     $project_id
      * @param   bool    $permanently
-     * @throws  Kohana_Exception
+     * @throws  Project_Exception
      */
     public function delete_project($project_id, $permanently = FALSE)
     {
@@ -107,7 +107,7 @@ class Kohana_Project_Manager {
 
         if ( ! $project_model->loaded())
         {
-            throw new Kohana_Exception('Can not load project with id: '.$project_id);
+            throw new Project_Exception('Can not load project with id: '.$project_id);
         }
 
         if ( ! $permanently)
@@ -132,7 +132,7 @@ class Kohana_Project_Manager {
      * Archive a project
      *
      * @param   int     $project_id
-     * @throws  Kohana_Exception
+     * @throws  Project_Exception
      */
     public function archive_project($project_id)
     {
@@ -140,7 +140,7 @@ class Kohana_Project_Manager {
 
         if ( ! $project_model->loaded())
         {
-            throw new Kohana_Exception('Can not load project with id: '.$project_id);
+            throw new Project_Exception('Can not load project with id: '.$project_id);
         }
 
         $project_model->set('archived', 1)->save();
@@ -150,7 +150,7 @@ class Kohana_Project_Manager {
      * Restore a project from trash/archived state
      *
      * @param   int     $project_id
-     * @throws  Kohana_Exception
+     * @throws  Project_Exception
      */
     public function restore_project($project_id)
     {
@@ -158,7 +158,7 @@ class Kohana_Project_Manager {
 
         if ( ! $project_model->loaded())
         {
-            throw new Kohana_Exception('Can not load project with id: '.$project_id);
+            throw new Project_Exception('Can not load project with id: '.$project_id);
         }
 
         $project_model
