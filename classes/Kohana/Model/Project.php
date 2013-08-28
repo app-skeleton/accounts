@@ -104,7 +104,6 @@ class Kohana_Model_Project extends ORM {
      *
      * @param   int|array       $project_id
      * @param   int             $user_id
-     * @throws  Kohana_Exception
      */
     public function add_user($project_id, $user_id)
     {
