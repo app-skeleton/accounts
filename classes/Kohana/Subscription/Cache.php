@@ -49,7 +49,15 @@ class Kohana_Subscription_Cache  {
         $key = self::$prefix.$account_id;
         $data = $this->_client->hGetAll($key);
 
-        return ! empty($data) ? $data : NULL;
+        if ( ! empty($data))
+        {
+            $data['account_id'] = $account_id;
+        }
+        else
+        {
+            $data = NULL;
+        }
+        return $data;
     }
 
     /**
@@ -60,6 +68,7 @@ class Kohana_Subscription_Cache  {
      */
     public function save($account_id, $data)
     {
+        unset($data['account_id']);
         $key = self::$prefix.$account_id;
         $this->_client->hMset($key, $data);
 
