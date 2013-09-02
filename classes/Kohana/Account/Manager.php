@@ -40,16 +40,19 @@ class Kohana_Account_Manager {
     /**
      * Create an account
      *
+     * @param   int     $user_id
      * @param   array   $values
      * @throws  Validation_Exception
      * @return  array
      */
-    public function create_account($values)
+    public function create_account($user_id, $values)
     {
         $account_model = ORM::factory('Account');
 
         try
         {
+            $values['owner_id'] = $user_id;
+            $values['created_by'] = $user_id;
             $values['created_on'] = date('Y-m-d H:i:s');
 
             // Create the account
