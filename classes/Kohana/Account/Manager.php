@@ -661,14 +661,14 @@ class Kohana_Account_Manager {
     }
 
     /**
-     * Check if an account was already registered with the given email
+     * Check if there is an account created by the given user
      *
-     * @param   $email
+     * @param   int     $user_id
      * @return  bool
      */
-    public function unique_email($email)
+    public function has_account($user_id)
     {
-        return $this->account_model()->unique_email($email);
+        return $this->account_model()->has_account($user_id);
     }
 
     /**
