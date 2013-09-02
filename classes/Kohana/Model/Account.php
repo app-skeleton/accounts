@@ -18,6 +18,7 @@ class Kohana_Model_Account extends ORM {
         'account_id' => array(),
         'name' => array(),
         'owner_id' => array(),
+        'created_by' => array(),
         'created_on' => array()
     );
 
@@ -162,6 +163,7 @@ class Kohana_Model_Account extends ORM {
             'a.account_id',
             'a.name',
             'a.owner_id',
+            'a.created_by',
             'a.created_on'
         ))
             ->from(array('accounts', 'a'))
@@ -379,6 +381,23 @@ class Kohana_Model_Account extends ORM {
         }
 
         return $permissions;
+    }
+
+    /**
+     * Check if an account was already registered with the given email
+     *
+     * @param   $email
+     * @return  bool
+     */
+    public function unique_email($email)
+    {
+        return ! (bool) DB::select(array(DB::expr('COUNT("*")'), 'total_count'))
+            ->from(array($this->_table_name, 'a'))
+            ->join(array('user_identities', 'ui'))
+            ->on('ui.user_id', '=', 'a.created_by')
+            ->on('ui.email', '=', DB::expr("'".$email."'"))
+            ->execute($this->_db)
+            ->get('total_count');
     }
 
     /**

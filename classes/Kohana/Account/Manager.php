@@ -661,6 +661,17 @@ class Kohana_Account_Manager {
     }
 
     /**
+     * Check if an account was already registered with the given email
+     *
+     * @param   $email
+     * @return  bool
+     */
+    public function unique_email($email)
+    {
+        return $this->account_model()->unique_email($email);
+    }
+
+    /**
      * Do garbage collection
      */
     public function garbage_collector()

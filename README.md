@@ -30,6 +30,8 @@
 - has_permission [x]
 - has_access [x]
 
+- unique_email [x]
+
 - garbage_collector [x]
 
 
