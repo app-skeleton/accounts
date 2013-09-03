@@ -51,6 +51,21 @@ class Kohana_Model_Account extends ORM {
     }
 
     /**
+     * Return the user id of the owner
+     *
+     * @param   int     $account_id
+     * @return  mixed
+     */
+    public function get_account_owner_id($account_id)
+    {
+        return DB::select('owner_id')
+            ->from('accounts')
+            ->where('account_id', '=', DB::expr($account_id))
+            ->execute($this->_db)
+            ->get('owner_id');
+    }
+
+    /**
      * Get data about the owner of the given account
      *
      * @param   int     $account_id
