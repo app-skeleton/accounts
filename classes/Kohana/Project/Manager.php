@@ -30,24 +30,71 @@ class Kohana_Project_Manager {
      *
      * @param   array   $values
      * @throws  Validation_Exception
+     * @throws  Exception
      * @return  array
      */
     public function create_project($values)
     {
+        $account_model = ORM::factory('Account');
         $project_model = ORM::factory('Project');
+        $project_model->begin();
 
         try
         {
-            $values['archived'] = 0;
-            $values['deleted'] = 0;
-            $project_model->values($values)->save();
+            $values = array_merge($values, array(
+                'archived' => 0,
+                'deleted' => 0
+            ));
+            $project_model
+                ->values($values)
+                ->save();
+
+            // Get the project id
+            $project_id = $project_model->pk();
+            $user_id = $project_model->get('created_by');
+            $account_id = $project_model->get('account_id');
+
+            // Get the account owner
+            $account_owner_id = $account_model->get_account_owner_id($account_id);
+
+            // Add the user and the account owner to the project
+            $project_model->add_user($project_id, $user_id);
+            if ($user_id != $account_owner_id)
+            {
+                $project_model->add_user($project_id, $account_owner_id);
+            }
+
+            if (self::$use_cache)
+            {
+                $account_cache = Account_Cache::instance();
+                $account_cache->add_project($user_id, $project_id);
+                if ($user_id != $account_owner_id)
+                {
+                    $account_cache->add_project($account_owner_id, $project_id);
+                }
+            }
+
+            // Everything is fine, commit
+            $project_model->commit();
 
             return $project_model->as_array();
+
         }
         catch (ORM_Validation_Exception $e)
         {
+            // Problem with the cache, rollback
+            $project_model->rollback();
+
             $errors = $e->errors('models/'.i18n::lang().'/project', FALSE);
             throw new Validation_Exception($errors);
+        }
+        catch (Exception $e)
+        {
+            // Problem with the cache, rollback
+            $project_model->rollback();
+
+            // Re-throw the exception
+            throw $e;
         }
     }
 
