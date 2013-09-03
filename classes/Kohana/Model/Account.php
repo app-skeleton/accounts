@@ -384,16 +384,18 @@ class Kohana_Model_Account extends ORM {
     }
 
     /**
-     * Check if there is an account created by the given user
+     * Check if there is an account created by the user with the given email address
      *
-     * @param   int     $user_id
+     * @param   int     $email
      * @return  bool
      */
-    public function has_account($user_id)
+    public function unique_email($email)
     {
         return ! (bool) DB::select(array(DB::expr('COUNT("*")'), 'total_count'))
-            ->from($this->_table_name)
-            ->where('created_by', '=', DB::expr($user_id))
+            ->from(array($this->_table_name, 'a'))
+            ->join(array('user_identities', 'ui'))
+            ->on('ui.email', '=', DB::expr("'".$email."'"))
+            ->on('ui.user_id', '=', 'a.created_by')
             ->execute($this->_db)
             ->get('total_count');
     }
