@@ -42,28 +42,144 @@ class Kohana_Account_Manager {
      *
      * @param   int     $user_id
      * @param   array   $values
-     * @throws  Validation_Exception
+     * @throws  Exception
+     * @throws  User_Validation_Exception
+     * @throw   ORM_Validation_Exception
      * @return  array
      */
     public function create_account($user_id, $values)
     {
         $account_model = ORM::factory('Account');
 
+        if ( ! isset($user_id))
+        {
+            // We have to create a new user
+            $user_errors = array();
+            $identity_errors = array();
+
+            // Create the user and identity models
+            $user_model = ORM::factory('User');
+            $identity_model = ORM::factory('Identity');
+
+            // Get user validation errors
+            $user_model->values($values);
+
+            try
+            {
+                $user_model->check();
+            }
+            catch (ORM_Validation_Exception $e)
+            {
+                $user_errors = $e->errors('models/'.i18n::lang().'/user', FALSE);
+            }
+
+            // Get identity validation errors
+            $identity_model->values($values);
+
+            try
+            {
+                $identity_model->check($identity_model->get_password_validation($values));
+            }
+            catch (ORM_Validation_Exception $e)
+            {
+                $identity_errors = $e->errors('models/'.i18n::lang().'/user', FALSE);
+                if (isset($identity_errors['_external']))
+                {
+                    $identity_external_errors = $identity_errors['_external'];
+                    unset($identity_errors['_external']);
+                    $identity_errors = array_merge($identity_errors, $identity_external_errors);
+                }
+            }
+
+            // Merge user and identity validation errors
+            $errors = array_merge($user_errors, $identity_errors);
+
+            // If validation fails, throw an exception
+            if ($errors)
+            {
+                throw new User_Validation_Exception($errors);
+            }
+
+            // No validation errors, make sure we have an account name
+            $account_name = ! empty($values['account_name'])
+                ? $values['account_name']
+                : trim($values['first_name'].' '.$values['last_name'])."'s ".APPNAME;
+        }
+        else
+        {
+            // User already exists, make sure we have an account name
+            if (empty($values['account_name']))
+            {
+                $user_manager = User_Manager::instance();
+                $user_data = $user_manager->get_user_data($user_id);
+                $account_name = trim($user_data['first_name'].' '.$user_data['last_name'])."'s ".APPNAME;
+            }
+            else
+            {
+                $account_name = $values['account_name'];
+            }
+        }
+
+        // Start the transaction
+        $account_model->begin();
+        $models_data = array();
+
         try
         {
-            $values['owner_id'] = $user_id;
-            $values['created_by'] = $user_id;
-            $values['created_on'] = date('Y-m-d H:i:s');
+            if ( ! isset($user_id))
+            {
+                // Save the user
+                $user_model->save();
+                $user_id = $user_model->pk();
+                $models_data['user'] = $user_model->as_array();
+
+                // Setup identity
+                $identity_model->set('user_id', $user_id);
+                $identity_model->set('status', 'active');
+
+                // Save the identity
+                $identity_model->save();
+                $models_data['identity'] = $identity_model->as_array();
+            }
+
+            $account_values = array(
+                'name' => $account_name,
+                'owner_id' => $user_id,
+                'created_by' => $user_id,
+                'created_on' => date('Y-m-d H:i:s')
+            );
 
             // Create the account
-            $account_model->values($values)->save();
+            $account_model
+                ->values($account_values)
+                ->save();
 
-            return $account_model->as_array();
+            $account_id = $account_model->pk();
+            $models_data['account'] = $account_model->as_array();
+
+            // Add the user to the account
+            $account_model->add_user($account_id, $user_id, NULL, self::STATUS_USER_LINKED);
+
+            // Grant permissions to the user on the account
+            $account_model->grant_permission($account_id, $user_id, array(
+                self::PERM_OWNER,
+                self::PERM_ACCOUNT_MANAGER,
+                self::PERM_ADMIN,
+                self::PERM_CREATE_PROJECTS
+            ));
+
+            // Everything was going fine, commit
+            $account_model->commit();
+
+            return $models_data;
         }
-        catch (ORM_Validation_Exception $e)
+        catch (Exception $e)
         {
-            $errors = $e->errors('models/'.i18n::lang().'/account', FALSE);
-            throw new Validation_Exception($errors);
+            // Something went wrong, rollback
+            $account_model->rollback();
+
+            // Re-throw the exception
+            throw $e;
         }
     }
 
@@ -664,14 +780,14 @@ class Kohana_Account_Manager {
     }
 
     /**
-     * Check if there is an account created by the given user
+     * Check if there is an account created by the user with the given email address
      *
-     * @param   int     $user_id
+     * @param   int     $email
      * @return  bool
      */
-    public function has_account($user_id)
+    public function unique_email($email)
     {
-        return $this->account_model()->has_account($user_id);
+        return $this->account_model()->unique_email($email);
     }
 
     /**
