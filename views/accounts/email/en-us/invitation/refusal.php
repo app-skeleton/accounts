@@ -3,13 +3,13 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<title><?= $invitee_email; ?> declined your invitation to App name</title>
+<title><?= $invitee_email; ?> declined your invitation to <?= APPNAME; ?></title>
 <body>
 <p>
     <strong>Hi <?= $inviter_data['first_name']; ?></strong>
 </p>
 <p>
-    We wanted to let you know that <?= $invitee_email; ?> declined your invitation to join App name.<br />
+    We wanted to let you know that <?= $invitee_email; ?> declined your invitation to join <?= APPNAME; ?>.<br />
 
     <?php if (isset($message)): ?>
         <p>

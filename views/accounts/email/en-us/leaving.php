@@ -9,7 +9,7 @@
     Hi <?= $account_owner_data['first_name']; ?>,
 </p>
 <p>
-    We wanted to let you know that <?= $invitee_data['first_name'].' '.$invitee_data['last_name']; ?> left your App name account.<br />
+    We wanted to let you know that <?= $invitee_data['first_name'].' '.$invitee_data['last_name']; ?> left your <?= APPNAME; ?> account.<br />
 
     <?php if (isset($message)): ?>
         <p>

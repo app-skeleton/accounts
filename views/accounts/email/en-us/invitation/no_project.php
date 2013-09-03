@@ -3,10 +3,10 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<title>You’ve been invited to App name</title>
+<title>You’ve been invited to <?= APPNAME; ?></title>
 <body>
 <p>
-    <?= $inviter_data['first_name'].' '.$inviter_data['last_name']; ?> invited you to this App name account:
+    <?= $inviter_data['first_name'].' '.$inviter_data['last_name']; ?> invited you to this <?= APPNAME; ?> account:
     <p><strong><?= $account_data['name']; ?></strong></p>
 </p>
 

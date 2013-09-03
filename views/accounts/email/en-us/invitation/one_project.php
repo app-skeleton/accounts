@@ -3,10 +3,10 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<title> You’ve been added to the <?= $projects[0]['name']; ?> project on App name</title>
+<title> You’ve been added to the <?= $projects[0]['name']; ?> project on <?= APPNAME; ?></title>
 <body>
 <p>
-    <?= $inviter_data['first_name'].' '.$inviter_data['last_name']; ?> added you to this project on App name:
+    <?= $inviter_data['first_name'].' '.$inviter_data['last_name']; ?> added you to this project on <?= APPNAME; ?>:
 
     <p><strong><?= $projects[0]['name']; ?></strong></p>
     <p><?= $projects[0]['description']; ?></p>

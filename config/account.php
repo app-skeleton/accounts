@@ -15,15 +15,15 @@ return array(
         'email' => array(
             'subject' => array(
                 'en-us' => array(
-                    'no_project' => "You've been invited to App name",
-                    'one_project' => "You've been added to the {{project_name}} project on App name",
-                    'multiple_projects' => "You've been added to {{project_count}} projects on App name",
-                    'refusal' => "{{invitee_email}} declined your invitation to App name",
+                    'no_project' => "You've been invited to ".APPNAME,
+                    'one_project' => "You've been added to the {{project_name}} project on ".APPNAME,
+                    'multiple_projects' => "You've been added to {{project_count}} projects on ".APPNAME,
+                    'refusal' => "{{invitee_email}} declined your invitation to ".APPNAME,
                 )
             ),
             'sender' => array(
                 'email' => 'noreply@appdomain.com',
-                'name'  => 'App name'
+                'name'  => APPNAME
             )
         ),
 
@@ -39,7 +39,7 @@ return array(
             ),
             'sender' => array(
                 'email' => 'noreply@appdomain.com',
-                'name'  => 'App name'
+                'name'  => APPNAME
             )
         )
     )
