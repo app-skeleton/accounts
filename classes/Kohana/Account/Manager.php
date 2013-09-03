@@ -42,15 +42,14 @@ class Kohana_Account_Manager {
      *
      * @param   int     $user_id
      * @param   array   $values
+     * @param   string  $plan
      * @throws  Exception
      * @throws  User_Validation_Exception
      * @throw   ORM_Validation_Exception
      * @return  array
      */
-    public function create_account($user_id, $values)
+    public function create_account($user_id, $values, $plan)
     {
-        $account_model = ORM::factory('Account');
-
         if ( ! isset($user_id))
         {
             // We have to create a new user
@@ -121,6 +120,7 @@ class Kohana_Account_Manager {
         }
 
         // Start the transaction
+        $account_model = ORM::factory('Account');
         $account_model->begin();
         $models_data = array();
 
@@ -157,6 +157,24 @@ class Kohana_Account_Manager {
             $account_id = $account_model->pk();
             $models_data['account'] = $account_model->as_array();
 
+            // Create subscription (with the default plan)
+            $plan_list = Kohana::$config->load('account/plans');
+            $subscription_values = array(
+                'account_id' => $account_id,
+                'plan' => $plan,
+                'expires_on' => date('Y-m-d H:i:s', time() + $plan_list[$plan]['time_limit'] * 24 * 3600),
+                'expired' => 0,
+                'paused' => 0,
+                'canceled' => 0
+            );
+            $subscription_model = ORM::factory('Subscription');
+            $subscription_model
+                ->values($subscription_values)
+                ->save();
+
+            $models_data['subscription'] = $subscription_model->as_array();
+
+
             // Add the user to the account
             $account_model->add_user($account_id, $user_id, NULL, self::STATUS_USER_LINKED);
 
@@ -167,6 +185,13 @@ class Kohana_Account_Manager {
                 self::PERM_ADMIN,
                 self::PERM_CREATE_PROJECTS
             ));
+
+            // Write subscription data to cache
+            if (Subscription_Manager::$use_cache)
+            {
+                // Save subscription to cache
+                Subscription_Cache::instance()->save($subscription_model->get('account_id'), $subscription_model->as_array());
+            }
 
             // Everything was going fine, commit
             $account_model->commit();
