@@ -41,14 +41,15 @@ class Kohana_Account_Manager {
      * Create an account
      *
      * @param   int     $user_id
-     * @param   array   $values
-     * @param   string  $plan
+     * @param   array   $user_values
+     * @param   array   $account_values
+     * @param   array   $subscription_values
      * @throws  Exception
      * @throws  User_Validation_Exception
      * @throw   ORM_Validation_Exception
      * @return  array
      */
-    public function create_account($user_id, $values, $plan)
+    public function create_account($user_id, $user_values, $account_values, $subscription_values)
     {
         if ( ! isset($user_id))
         {
@@ -61,7 +62,7 @@ class Kohana_Account_Manager {
             $identity_model = ORM::factory('Identity');
 
             // Get user validation errors
-            $user_model->values($values);
+            $user_model->values($user_values);
 
             try
             {
@@ -73,11 +74,11 @@ class Kohana_Account_Manager {
             }
 
             // Get identity validation errors
-            $identity_model->values($values);
+            $identity_model->values($user_values);
 
             try
             {
-                $identity_model->check($identity_model->get_password_validation($values));
+                $identity_model->check($identity_model->get_password_validation($user_values));
             }
             catch (ORM_Validation_Exception $e)
             {
@@ -100,22 +101,19 @@ class Kohana_Account_Manager {
             }
 
             // No validation errors, make sure we have an account name
-            $account_name = ! empty($values['account_name'])
-                ? $values['account_name']
-                : trim($values['first_name'].' '.$values['last_name'])."'s ".APPNAME;
+            if (empty($account_values['name']))
+            {
+                $account_values['name'] = trim($user_values['first_name'].' '.$user_values['last_name'])."'s ".APPNAME;
+            }
         }
         else
         {
             // User already exists, make sure we have an account name
-            if (empty($values['account_name']))
+            if (empty($account_values['name']))
             {
                 $user_manager = User_Manager::instance();
                 $user_data = $user_manager->get_user_data($user_id);
-                $account_name = trim($user_data['first_name'].' '.$user_data['last_name'])."'s ".APPNAME;
-            }
-            else
-            {
-                $account_name = $values['account_name'];
+                $account_values['name'] = trim($user_data['first_name'].' '.$user_data['last_name'])."'s ".APPNAME;
             }
         }
 
@@ -142,12 +140,11 @@ class Kohana_Account_Manager {
                 $models_data['identity'] = $identity_model->as_array();
             }
 
-            $account_values = array(
-                'name' => $account_name,
+            $account_values = array_merge($account_values, array(
                 'owner_id' => $user_id,
                 'created_by' => $user_id,
                 'created_on' => date('Y-m-d H:i:s')
-            );
+            ));
 
             // Create the account
             $account_model
@@ -157,23 +154,21 @@ class Kohana_Account_Manager {
             $account_id = $account_model->pk();
             $models_data['account'] = $account_model->as_array();
 
-            // Create subscription (with the default plan)
+            // Create subscription
             $plan_list = Kohana::$config->load('account/plans');
-            $subscription_values = array(
+            $subscription_values = array_merge($subscription_values, array(
                 'account_id' => $account_id,
-                'plan' => $plan,
                 'expires_on' => date('Y-m-d H:i:s', time() + $plan_list[$plan]['time_limit'] * 24 * 3600),
                 'expired' => 0,
                 'paused' => 0,
                 'canceled' => 0
-            );
+            ));
             $subscription_model = ORM::factory('Subscription');
             $subscription_model
                 ->values($subscription_values)
                 ->save();
 
             $models_data['subscription'] = $subscription_model->as_array();
-
 
             // Add the user to the account
             $account_model->add_user($account_id, $user_id, NULL, self::STATUS_USER_LINKED);
@@ -229,7 +224,9 @@ class Kohana_Account_Manager {
         try
         {
             // Update the account
-            $account_model->values($values)->save();
+            $account_model
+                ->values($values)
+                ->save();
 
             return $account_model->as_array();
         }
@@ -289,6 +286,17 @@ class Kohana_Account_Manager {
 
         // Delete account
         $account_model->delete();
+    }
+
+    /**
+     * Return the user id of the owner
+     *
+     * @param   int     $account_id
+     * @return  mixed
+     */
+    public function get_account_owner_id($account_id)
+    {
+        return $this->account_model()->get_account_owner_id($account_id);
     }
 
     /**
@@ -367,10 +375,11 @@ class Kohana_Account_Manager {
     {
         $account_model = $this->account_model();
         $account_model->begin();
-        $account_model->add_user($account_id, $user_id, $inviter_id, $status);
 
         try
         {
+            $account_model->add_user($account_id, $user_id, $inviter_id, $status);
+
             if (self::$use_cache)
             {
                 $account_cache = Account_Cache::instance();
@@ -650,10 +659,11 @@ class Kohana_Account_Manager {
     {
         $account_model = $this->account_model();
         $account_model->begin();
-        $account_model->grant_permission($account_id, $user_id, $permission);
 
         try
         {
+            $account_model->grant_permission($account_id, $user_id, $permission);
+
             if (self::$use_cache)
             {
                 $account_cache = Account_Cache::instance();
@@ -685,10 +695,11 @@ class Kohana_Account_Manager {
     {
         $account_model = $this->account_model();
         $account_model->begin();
-        $account_model->revoke_permission($account_id, $user_id, $permission);
 
         try
         {
+            $account_model->revoke_permission($account_id, $user_id, $permission);
+
             if (self::$use_cache)
             {
                 $account_cache = Account_Cache::instance();
@@ -719,10 +730,11 @@ class Kohana_Account_Manager {
     {
         $account_model = $this->account_model();
         $account_model->begin();
-        $account_model->revoke_all_permissions($account_id, $user_id);
 
         try
         {
+            $account_model->revoke_all_permissions($account_id, $user_id);
+
             if (self::$use_cache)
             {
                 $account_cache = Account_Cache::instance();
