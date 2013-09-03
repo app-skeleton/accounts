@@ -39,9 +39,11 @@ class Kohana_Subscription_Manager {
 
         try
         {
-            $values['expired'] = 0;
-            $values['paused'] = 0;
-            $values['canceled'] = 0;
+            $values = array_merge($values, array(
+                'expired' => 0,
+                'paused' => 0,
+                'canceled' => 0
+            ));
 
             // Begin transaction
             $subscription_model->begin();
@@ -113,14 +115,6 @@ class Kohana_Subscription_Manager {
             $subscription_model->commit();
 
             return $subscription_model->as_array();
-        }
-        catch (ORM_Validation_Exception $e)
-        {
-            // Validation failed, rollback
-            $subscription_model->rollback();
-
-            $errors = $e->errors('models/'.i18n::lang().'/subscription', FALSE);
-            throw new Validation_Exception($errors);
         }
         catch (Exception $e)
         {
@@ -465,8 +459,6 @@ class Kohana_Subscription_Manager {
 
         try
         {
-            $subscription_data = $this->get_subscription_data($account_id);
-
             // Set a new expiration date and plan for the subscription
             $subscription_model
                 ->set('plan', $plan)
