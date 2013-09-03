@@ -62,14 +62,6 @@ class Kohana_Subscription_Manager {
 
             return $subscription_model->as_array();
         }
-        catch (ORM_Validation_Exception $e)
-        {
-            // Validation failed, rollback
-            $subscription_model->rollback();
-
-            $errors = $e->errors('models/'.i18n::lang().'/subscription', FALSE);
-            throw new Validation_Exception($errors);
-        }
         catch (Exception $e)
         {
             // Something went wrong, rollback
