@@ -18,14 +18,14 @@ class Kohana_Account_Invitation_Manager {
     /**
      * Create and send an invitation
      *
-     * @param   string      $email
-     * @param   int         $account_id
-     * @param   array       $project_ids
-     * @param   array       $permission
-     * @param   int         $inviter_id
+     * @param   string|array    $emails
+     * @param   int             $account_id
+     * @param   array           $project_ids
+     * @param   array           $permissions
+     * @param   int             $inviter_id
      * @throws  Validation_Exception|Exception
      */
-    public function invite($email, $account_id, $project_ids, $permission, $inviter_id)
+    public function invite($emails, $account_id, $project_ids, $permissions, $inviter_id)
     {
         $user_manager       = User_Manager::instance();
         $project_manager    = Project_Manager::instance();
@@ -37,7 +37,7 @@ class Kohana_Account_Invitation_Manager {
         $account_model      = $account_manager->account_model();
         $project_model      = $project_manager->project_model();
 
-        $emails = (array)$email;
+        $emails = (array)$emails;
 
         // Get data about the inviter
         $inviter_data = $user_manager->get_user_data($inviter_id);
@@ -45,13 +45,23 @@ class Kohana_Account_Invitation_Manager {
         // Get data about the account
         $account_data = $account_manager->get_account_data($account_id);
 
+        // Check if all emails are valid
+        $invalid_emails = array();
         foreach ($emails as $email)
         {
             if ( ! Valid::email($email))
             {
-                throw new Validation_Exception(array(), 'Invalid email address.');
+                array_push($invalid_emails, $email);
             }
+        }
 
+        if ( ! empty($invalid_emails))
+        {
+            throw new Validation_Exception($invalid_emails);
+        }
+
+        foreach ($emails as $email)
+        {
             // Begin database transaction
             $account_model->begin();
 
@@ -80,12 +90,12 @@ class Kohana_Account_Invitation_Manager {
                 }
 
                 // Grant the given permissions to the user
-                $account_model->grant_permission($account_id, $invitee_id, $permission);
+                $account_model->grant_permission($account_id, $invitee_id, $permissions);
 
                 // Update the user's permissions in cache
                 if ($use_cache)
                 {
-                    $account_cache->grant_account_permission($invitee_id, $account_id, $permission);
+                    $account_cache->grant_account_permission($invitee_id, $account_id, $permissions);
                 }
 
                 // Get user status
@@ -180,66 +190,110 @@ class Kohana_Account_Invitation_Manager {
     /**
      * Accept an invitation
      *
-     * @param   string  $secure_link
+     * @param   array   $invitation_data
+     * @param   bool    $is_registered
+     * @param   array   $values
      * @throws  Account_Invitation_Link_Exception
+     * @throws  Exception
      */
-    public function accept($secure_link)
+    public function accept($invitation_data, $is_registered, $values = array())
     {
-        // Load the invitation link
-        $link = ORM::factory('Account_Invitation_Link')
-            ->where('secure_key', '=', $secure_link)
-            ->find();
+        $user_manager = User_Manager::instance();
+        $account_model = ORM::factory('Account');
+        $invitee_id = $invitation_data['invitee_id'];
+        $account_id = $invitation_data['account_id'];
 
-        if ( ! $link->loaded())
+        // Begin the transaction
+        $account_model->begin();
+
+        try
         {
-            throw new Account_Invitation_Link_Exception('Invalid secure key.');
+            if ( ! $is_registered)
+            {
+                // User is ghost user, update data
+                $user_manager->update_user($invitee_id, $values);
+            }
+
+            // Update user's status on the account
+            $account_model->set_user_status($account_id, $invitee_id, Account_Manager::STATUS_USER_LINKED);
+
+
+            // Delete the link
+            $link->delete();
+
+            // Everything is fine, commit
+            $account_model->commit();
         }
+        catch (Exception $e)
+        {
+            // Something went wrong, rollback
+            $account_model->rollback();
 
-        // Accept the invitation
-        Account_Manager::instance()->set_user_status($link->get('account_id'), $link->get('invitee_id'), Account_Manager::STATUS_USER_LINKED);
-
-
-        // Delete the link
-        $link->delete();
+            // Re-throw the exception
+            throw $e;
+        }
     }
 
     /**
      * Decline an invitation
      *
-     * @param   string  $secure_link
+     * @param   string  $secure_key
      * @param   string  $message
      * @throws  Account_Invitation_Link_Exception
+     * @throws  Exception
      */
-    public function decline($secure_link, $message = NULL)
+    public function decline($secure_key, $message = NULL)
     {
-        // Load the invitation link
-        $link = ORM::factory('Account_Invitation_Link')
-            ->where('secure_key', '=', $secure_link)
-            ->find();
+        // Get invitation data
+        $invitation_data = $this->get_invitation_data($secure_key);
 
-        if ( ! $link->loaded())
+        $account_model = ORM::factory('Account');
+        $invitee_id = $invitation_data['invitee_id'];
+        $inviter_id = $invitation_data['inviter_id'];
+        $account_id = $invitation_data['account_id'];
+        $email = $invitation_data['email'];
+
+        $account_model->begin();
+
+        try
         {
-            throw new Account_Invitation_Link_Exception('Invalid secure key.');
+            // Decline the invitation
+            $account_model->set_user_status($account_id, $invitee_id, Account_Manager::STATUS_USER_LEFT);
+
+            // Delete the link
+            $link->delete();
+
+            // Everything is fine, commit
+            $account_model->commit();
+        }
+        catch (Exception $e)
+        {
+            // Something went wrong, rollback
+            $account_model->rollback();
+
+            // Re-throw the exception
+            throw $e;
         }
 
-        // Decline the invitation
-        Account_Manager::instance()->set_user_status($link->get('account_id'), $link->get('invitee_id'), Account_Manager::STATUS_USER_LEFT);
-
-        // Get inviter name and email
-        $inviter_data = User_Manager::instance()->get_user_data($link->get('inviter_id'));
+        // Prepare inviter data
+        $inviter_data = array(
+            'user_id' => $invitation_data['inviter_id'],
+            'first_name' => $invitation_data['inviter_first_name'],
+            'last_name' => $invitation_data['inviter_last_name'],
+            'username' => $invitation_data['inviter_username'],
+            'email' => $invitation_data['inviter_email'],
+            'status' => $invitation_data['inviter_status'],
+        );
 
         $data = array(
-            'invitee_email'         => $link->get('email'),
+            'invitee_email'         => $email,
             'inviter_data'          => $inviter_data,
             'message'               => $message
         );
 
         // Send an email to the inviter
-        $invitation_refusal_email = Account_Invitation_Refusal_Email::factory($inviter_data['email'], $data);
+        $invitation_refusal_email = Account_Invitation_Refusal_Email::factory($inviter_id, $data);
         $invitation_refusal_email->send();
-
-        // Delete the link
-        $link->delete();
     }
 
     /**
@@ -251,8 +305,7 @@ class Kohana_Account_Invitation_Manager {
      */
     public function get_invitation_data($secure_key)
     {
-        $invitation_data = ORM::factory('Account_Invitation_Link')
-            ->get_invitation_data($secure_key);
+        $invitation_data = ORM::factory('Account_Invitation_Link')->get_invitation_data($secure_key);
 
         if (empty($invitation_data) || strtotime($invitation_data['expires_on']) < time())
         {
@@ -267,8 +320,7 @@ class Kohana_Account_Invitation_Manager {
      */
     public function garbage_collector()
     {
-        ORM::factory('Account_Invitation_Link')
-            ->garbage_collector(time());
+        ORM::factory('Account_Invitation_Link')->garbage_collector(time());
     }
 
     /**
