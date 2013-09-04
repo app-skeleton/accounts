@@ -133,7 +133,7 @@ class Kohana_Account_Manager {
 
                 // Setup identity
                 $identity_model->set('user_id', $user_id);
-                $identity_model->set('status', 'active');
+                $identity_model->set('status', Identity::STATUS_ACTIVE);
 
                 // Save the identity
                 $identity_model->save();
