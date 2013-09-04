@@ -39,11 +39,11 @@ class Kohana_Model_Account_Invitation_Link extends ORM {
             'ai.secure_key',
             'ai.email',
             'ai.expires_on',
-            array('u.user_id', 'inviter_id'),
             array('u.first_name', 'inviter_first_name'),
             array('u.last_name', 'inviter_last_name'),
             array('ui.username', 'inviter_username'),
-            array('ui.email', 'inviter_email')
+            array('ui.email', 'inviter_email'),
+            array('ui.status', 'inviter_status')
         ))
             ->from(array('account_invitation_links', 'ai'))
             ->join(array('users', 'u'))
