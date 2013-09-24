@@ -8,8 +8,9 @@
  *
  */
 
-class Account_Exception extends Kohana_Account_Exception  {
+class Account_Exception extends Kohana_Account_Exception {
 
 }
 
 // END Account_Exception
+
