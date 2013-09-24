@@ -27,8 +27,8 @@ return array(
             )
         ),
 
-        // Invitation link in seconds
-        'link_lifetime' => 3600 *24 * 7
+        // Invitation link lifetime in days
+        'link_lifetime' => 7
     ),
 
     // Account leaving settings
