@@ -10,25 +10,6 @@
 
 class Kohana_Model_Ghost_Identity extends Model_Identity {
 
-    /**
-     * Define validation rules
-     *
-     * @return  array
-     */
-    public function rules()
-    {
-        return array();
-    }
-
-    /**
-     * Define filters
-     *
-     * @return  array
-     */
-    public function filters()
-    {
-        return array();
-    }
 }
 
 // END Kohana_Model_Ghost_Identity
