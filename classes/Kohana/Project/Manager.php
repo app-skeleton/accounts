@@ -8,22 +8,12 @@
  *
  */
 
-class Kohana_Project_Manager {
+class Kohana_Project_Manager extends Account_Service_Manager {
 
     /**
-     * @var Project_Manager     A singleton instance
-     */
-    protected static $_instance;
-
-    /**
-     * @var ORM                 An instance of the Model_Project class
+     * @var ORM                     An instance of the Model_Project class
      */
     protected $_project_model;
-
-    /**
-     * @var bool                Whether to cache the users accounts, and user account permissions (these are most frequently queried)
-     */
-    public static $use_cache = TRUE;
 
     /**
      * Create a project
@@ -35,9 +25,11 @@ class Kohana_Project_Manager {
      */
     public function create_project($values)
     {
-        $account_model = ORM::factory('Account');
-        $project_model = ORM::factory('Project');
-        $project_model->begin();
+        // Get the account manager
+        $account_manager = Account_Manager::instance();
+
+        // Begin transaction
+        $this->begin_transaction();
 
         try
         {
@@ -45,7 +37,9 @@ class Kohana_Project_Manager {
                 'archived' => 0,
                 'deleted' => 0
             ));
-            $project_model
+
+            // Save project
+            $project_model = ORM::factory('Project')
                 ->values($values)
                 ->save();
 
@@ -55,43 +49,32 @@ class Kohana_Project_Manager {
             $account_id = $project_model->get('account_id');
 
             // Get the account owner
-            $account_owner_id = $account_model->get_account_owner_id($account_id);
+            $account_owner_id = $account_manager->get_account_owner_id($account_id);
 
             // Add the user and the account owner to the project
-            $project_model->add_user($project_id, $user_id);
+            $this->add_user($project_id, $user_id);
             if ($user_id != $account_owner_id)
             {
-                $project_model->add_user($project_id, $account_owner_id);
+                $this->add_user($project_id, $account_owner_id);
             }
 
-            if (self::$use_cache)
-            {
-                $account_cache = Account_Cache::instance();
-                $account_cache->add_project($user_id, $project_id);
-                if ($user_id != $account_owner_id)
-                {
-                    $account_cache->add_project($account_owner_id, $project_id);
-                }
-            }
-
-            // Everything is fine, commit
-            $project_model->commit();
+            // Everything was going fine, commit
+            $this->commit_transaction();
 
             return $project_model->as_array();
-
         }
         catch (ORM_Validation_Exception $e)
         {
-            // Problem with the cache, rollback
-            $project_model->rollback();
+            // Validation failed, rollback
+            $this->rollback_transaction();
 
             $errors = $e->errors('models/'.i18n::lang().'/project', FALSE);
             throw new Validation_Exception($errors);
         }
         catch (Exception $e)
         {
-            // Problem with the cache, rollback
-            $project_model->rollback();
+            // Something went wrong, rollback
+            $this->rollback_transaction();
 
             // Re-throw the exception
             throw $e;
@@ -105,7 +88,7 @@ class Kohana_Project_Manager {
      * @param   array   $values
      * @return  array
      * @throws  Validation_Exception
-     * @throws  Project_Exception
+     * @throws  Kohana_Exception
      */
     public function update_project($project_id, $values)
     {
@@ -113,12 +96,17 @@ class Kohana_Project_Manager {
 
         if ( ! $project_model->loaded())
         {
-            throw new Project_Exception('Can not load project with id: '.$project_id);
+            throw new Kohana_Exception(
+                'Can not find the project with id: :project_id.', array(
+                ':project_id' => $project_id
+            ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
         }
 
         try
         {
-            $project_model->values($values)->save();
+            $project_model
+                ->values($values)
+                ->save();
 
             return $project_model->as_array();
         }
@@ -146,7 +134,8 @@ class Kohana_Project_Manager {
      *
      * @param   int     $project_id
      * @param   bool    $permanently
-     * @throws  Project_Exception
+     * @throws  Kohana_Exception
+     * @throws  Exception
      */
     public function delete_project($project_id, $permanently = FALSE)
     {
@@ -154,24 +143,49 @@ class Kohana_Project_Manager {
 
         if ( ! $project_model->loaded())
         {
-            throw new Project_Exception('Can not load project with id: '.$project_id);
+            throw new Kohana_Exception(
+                'Can not find the project with id: :project_id.', array(
+                ':project_id' => $project_id
+            ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
         }
 
-        if ( ! $permanently)
-        {
-            // Just move the project to trash
-            $project_model->set('deleted', 1)->save();
+        // Begin transaction
+        $this->begin_transaction(FALSE);
 
-            // Create a project deletion request
-            ORM::factory('Project_Deletion_Request')
-                ->set('project_id', $project_id)
-                ->set('requested_on', date('Y-m-d H:i:s'))
-                ->save();
-        }
-        else
+        try
         {
-            // Delete the project permanently
-            $project_model->delete();
+            if ( ! $permanently)
+            {
+                // Just move the project to trash
+                $project_model
+                    ->set('deleted', 1)
+                    ->save();
+
+                // Get the grace period
+                $grace_period = Kohana::$config->load('account')->get('trash_grace_period');
+
+                // Create a project deletion request
+                ORM::factory('Project_Deletion_Request')
+                    ->set('project_id', $project_id)
+                    ->set('due_on', date('Y-m-d H:i:s', time() + $grace_period * 24 * 3600))
+                    ->save();
+            }
+            else
+            {
+                // Delete the project permanently
+                $project_model->delete();
+            }
+
+            // Everything was going fine, commit
+            $this->commit_transaction(FALSE);
+        }
+        catch (Exception $e)
+        {
+            // Something went wrong, rollback
+            $this->rollback_transaction(FALSE);
+
+            // Re-throw the exception
+            throw $e;
         }
     }
 
@@ -179,7 +193,7 @@ class Kohana_Project_Manager {
      * Archive a project
      *
      * @param   int     $project_id
-     * @throws  Project_Exception
+     * @throws  Kohana_Exception
      */
     public function archive_project($project_id)
     {
@@ -187,17 +201,22 @@ class Kohana_Project_Manager {
 
         if ( ! $project_model->loaded())
         {
-            throw new Project_Exception('Can not load project with id: '.$project_id);
+            throw new Kohana_Exception(
+                'Can not find the project with id: :project_id.', array(
+                ':project_id' => $project_id
+            ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
         }
 
-        $project_model->set('archived', 1)->save();
+        $project_model
+            ->set('archived', 1)
+            ->save();
     }
 
     /**
      * Restore a project from trash/archived state
      *
      * @param   int     $project_id
-     * @throws  Project_Exception
+     * @throws  Kohana_Exception
      */
     public function restore_project($project_id)
     {
@@ -205,16 +224,33 @@ class Kohana_Project_Manager {
 
         if ( ! $project_model->loaded())
         {
-            throw new Project_Exception('Can not load project with id: '.$project_id);
+            throw new Kohana_Exception(
+                'Can not find the project with id: :project_id.', array(
+                ':project_id' => $project_id
+            ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
         }
 
-        $project_model
-            ->set('archived', 0)
-            ->set('deleted', 0)
-            ->save();
+        // Begin transaction
+        $this->begin_transaction(FALSE);
 
-        // Remove any deletion requests for this project
-        ORM::factory('Project_Deletion_Request')->delete_all($project_id);
+        try
+        {
+            $project_model
+                ->set('archived', 0)
+                ->set('deleted', 0)
+                ->save();
+
+            // Remove any deletion requests for this project
+            ORM::factory('Project_Deletion_Request')->delete_all($project_id);
+
+            // Everything was going fine, commit
+            $this->commit_transaction(FALSE);
+        }
+        catch (Exception $e)
+        {
+            // Something went wrong, rollback
+            $this->rollback_transaction(FALSE);
+        }
     }
 
     /**
@@ -226,25 +262,26 @@ class Kohana_Project_Manager {
      */
     public function add_user($project_id, $user_id)
     {
-        $project_model = $this->project_model();
-        $project_model->begin();
-        $project_model->add_user($project_id, $user_id);
+        // Begin transaction
+        $this->begin_transaction();
 
         try
         {
+            // Add user to the project(s)
+            $this->project_model()->add_user($project_id, $user_id);
+
             if (self::$use_cache)
             {
-                $account_cache = Account_Cache::instance();
-                $account_cache->add_project($user_id, $project_id);
+                $this->cache()->sync_projects($user_id);
             }
 
-            // Everything is fine, commit
-            $project_model->commit();
+            // Everything was going fine, commit
+            $this->commit_transaction();
         }
         catch (Exception $e)
         {
-            // Problem with the cache, rollback
-            $project_model->rollback();
+            // Something went wrong, rollback
+            $this->rollback_transaction();
 
             // Re-throw the exception
             throw $e;
@@ -260,25 +297,25 @@ class Kohana_Project_Manager {
      */
     public function remove_user($project_id, $user_id)
     {
-        $project_model = $this->project_model();
-        $project_model->begin();
-        $project_model->remove_user($project_id, $user_id);
+        // Begin transaction
+        $this->begin_transaction();
 
         try
         {
+            $this->project_model()->remove_user($project_id, $user_id);
+
             if (self::$use_cache)
             {
-                $account_cache = Account_Cache::instance();
-                $account_cache->remove_project($user_id, $project_id);
+                $this->cache()->sync_projects($user_id);
             }
 
-            // Everything is fine, commit
-            $project_model->commit();
+            // Everything was going fine, commit
+            $this->commit_transaction();
         }
         catch (Exception $e)
         {
-            // Problem with the cache, rollback
-            $project_model->rollback();
+            // Something went wrong, rollback
+            $this->rollback_transaction();
 
             // Re-throw the exception
             throw $e;
@@ -286,14 +323,15 @@ class Kohana_Project_Manager {
     }
 
     /**
-     * Check if a user is linked to one or more projects
+     * Check if a user is linked to one or more projects (alias for is_user_linked)
      *
      * @param   int|array   $project_id
      * @param   int         $user_id
+     * @return  bool
      */
     public function is_user_linked($project_id, $user_id)
     {
-        return $this->project_model()->is_user_linked($project_id, $user_id);
+        return $this->has_access($project_id, $user_id);
     }
 
     /**
@@ -373,22 +411,20 @@ class Kohana_Project_Manager {
     {
         if (self::$use_cache)
         {
-            $account_cache = Account_Cache::instance();
-            $account_cache->update_only(FALSE);
-            $project_ids = $account_cache->load_projects($user_id);
+            $project_ids = $this->cache()->load_projects($user_id);
 
             if ( ! isset($project_ids))
             {
-                // Load from DB
+                // Load from database
                 $project_ids = $this->project_model()->get_user_project_ids($user_id);
 
-                // Save to cache
-                $account_cache->save_projects($user_id, $project_ids);
+                // Sync cache
+                $this->cache()->sync_projects($user_id, $project_ids);
             }
         }
         else
         {
-            // Load from DB
+            // Load from database
             $project_ids = $this->project_model()->get_user_project_ids($user_id);
         }
 
@@ -416,13 +452,7 @@ class Kohana_Project_Manager {
      */
     public function garbage_collector()
     {
-        // Get the grace period
-        $grace_period = Kohana::$config->load('account')->get('trash_grace_period');
-
-        // Calculate start date
-        $start_date = date('Y-m-d H:i:s', time() - $grace_period * 24 * 3600);
-
-        $this->project_model()->garbage_collector($start_date);
+        $this->project_model()->garbage_collector(time());
     }
 
     /**
@@ -438,21 +468,6 @@ class Kohana_Project_Manager {
         }
 
         return $this->_project_model;
-    }
-
-    /**
-     * Returns a singleton instance of the class.
-     *
-     * @return  Project_Manager
-     */
-    public static function instance()
-    {
-        if ( ! Project_Manager::$_instance instanceof Project_Manager)
-        {
-            Project_Manager::$_instance = new Project_Manager();
-        }
-
-        return Project_Manager::$_instance;
     }
 }
 
