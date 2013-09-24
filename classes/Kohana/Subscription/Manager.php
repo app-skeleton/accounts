@@ -8,12 +8,7 @@
  *
  */
 
-class Kohana_Subscription_Manager {
-
-    /**
-     * @var Subscription_Manager    A singleton instance
-     */
-    protected static $_instance;
+class Kohana_Subscription_Manager extends Account_Service_Manager {
 
     /**
      * @var ORM                     An instance of the Model_Subscription class
@@ -21,105 +16,49 @@ class Kohana_Subscription_Manager {
     protected $_subscription_model;
 
     /**
-     * @var bool                    Whether to cache subscription data (it's is frequently queried)
-     */
-    public static $use_cache = TRUE;
-
-    /**
      * Create a subscription
      *
-     * @param   array $values
+     * @param   int     $account_id
+     * @param   string  $plan
      * @throws  Validation_Exception
      * @throws  Exception
      * @return  array
      */
-    public function create_subscription($values)
+    public function create_subscription($account_id, $plan)
     {
-        $subscription_model = ORM::factory('Subscription');
+        // Begin transaction
+        $this->begin_transaction();
 
         try
         {
-            $values = array_merge($values, array(
-                'expired' => 0,
-                'paused' => 0,
-                'canceled' => 0
-            ));
-
-            // Begin transaction
-            $subscription_model->begin();
+            $plan_list = Kohana::$config->load('account/plans');
+            $expires_on = date('Y-m-d H:i:s', time() + $plan_list[$plan]['time_limit'] * 24 * 3600);
 
             // Create the subscription
-            $subscription_model
-                ->values($values)
+            $subscription_model = ORM::factory('Subscription')
+                ->set('account_id', $account_id)
+                ->set('plan', $plan)
+                ->set('expires_on', $expires_on)
+                ->set('expired', 0)
+                ->set('paused', 0)
+                ->set('canceled', 0)
                 ->save();
 
             if (self::$use_cache)
             {
-                // Save subscription to cache
-                Subscription_Cache::instance()->save($subscription_model->get('account_id'), $subscription_model->as_array());
+                // Sync cache
+                $this->cache()->sync_subscription_data($subscription_model->get('account_id'), $subscription_model->as_array());
             }
 
-            // Everything is fine, commit
-            $subscription_model->commit();
+            // Everything was going fine, commit
+            $this->commit_transaction();
 
             return $subscription_model->as_array();
         }
         catch (Exception $e)
         {
             // Something went wrong, rollback
-            $subscription_model->rollback();
-
-            // Re-throw the exception
-            throw $e;
-        }
-    }
-
-    /**
-     * Update a subscription
-     *
-     * @param   int     $account_id
-     * @param   array   $values
-     * @throws  Validation_Exception
-     * @throws  Subscription_Exception
-     * @throws  Exception
-     * @return  array
-     */
-    public function update_subscription($account_id, $values)
-    {
-        $subscription_model = ORM::factory('Subscription')
-            ->where('account_id', '=', DB::expr($account_id))
-            ->find();
-
-        if ( ! $subscription_model->loaded())
-        {
-            throw new Subscription_Exception('Can not load subscription for account id: '.$account_id);
-        }
-
-        // Begin transaction
-        $subscription_model->begin();
-
-        try
-        {
-            // Update the subscription
-            $subscription_model
-                ->values($values)
-                ->save();
-
-            if (self::$use_cache)
-            {
-                // Save subscription to cache
-                Subscription_Cache::instance()->save($account_id, $subscription_model->as_array());
-            }
-
-            // Everything is fine, commit
-            $subscription_model->commit();
-
-            return $subscription_model->as_array();
-        }
-        catch (Exception $e)
-        {
-            // Something went wrong, rollback
-            $subscription_model->rollback();
+            $this->rollback_transaction();
 
             // Re-throw the exception
             throw $e;
@@ -130,14 +69,12 @@ class Kohana_Subscription_Manager {
      * Get data about a subscription
      *
      * @param   int     $account_id
-     * @throws  Subscription_Exception
+     * @throws  Kohana_Exception
      * @return  array
      */
     public function get_subscription_data($account_id)
     {
-        $subscription_cache = self::$use_cache ? Subscription_Cache::instance() : NULL;
-
-        if ( ! self::$use_cache || ($subscription_data = $subscription_cache->load($account_id)) === NULL)
+        if ( ! self::$use_cache || ($subscription_data = $this->cache()->load_subscription_data($account_id)) === NULL)
         {
             $subscription_model = ORM::factory('Subscription')
                 ->where('account_id', '=', DB::expr($account_id))
@@ -145,15 +82,18 @@ class Kohana_Subscription_Manager {
 
             if ( ! $subscription_model->loaded())
             {
-                throw new Subscription_Exception('Can not load subscription for account id: '.$account_id);
+                throw new Kohana_Exception(
+                    'Can not find the subscription for account id :account_id.', array(
+                    ':account_id' => $account_id
+                ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
             }
 
             $subscription_data = $subscription_model->as_array();
 
             if (self::$use_cache)
             {
-                // Save data to cache
-                $subscription_cache->save($account_id, $subscription_data);
+                // Sync cache
+                $this->cache()->sync_subscription_data($account_id, $subscription_data);
             }
         }
 
@@ -164,10 +104,50 @@ class Kohana_Subscription_Manager {
      * Pause a subscription
      *
      * @param   int     $account_id
+     * @throws  Kohana_Exception
+     * @throws  Exception
      */
     public function pause_subscription($account_id)
     {
-        $this->update_subscription($account_id, array('paused' => 1));
+        $subscription_model = ORM::factory('Subscription')
+            ->where('account_id', '=', DB::expr($account_id))
+            ->find();
+
+        if ( ! $subscription_model->loaded())
+        {
+            throw new Kohana_Exception(
+                'Can not find the subscription for account id :account_id.', array(
+                ':account_id' => $account_id
+            ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
+        }
+
+        // Begin transaction
+        $this->begin_transaction();
+
+        try
+        {
+            // Update the subscription
+            $subscription_model
+                ->set('paused', 1)
+                ->save();
+
+            if (self::$use_cache)
+            {
+                // Sync cache
+                $this->cache()->sync_subscription_data($account_id, $subscription_model->as_array());
+            }
+
+            // Everything was going fine, commit
+            $this->commit_transaction();
+        }
+        catch (Exception $e)
+        {
+            // Something went wrong, rollback
+            $this->rollback_transaction();
+
+            // Re-throw the exception
+            throw $e;
+        }
     }
 
     /**
@@ -175,7 +155,7 @@ class Kohana_Subscription_Manager {
      *
      * @param   int     $account_id
      * @param   int     $requested_by
-     * @throws  Subscription_Exception
+     * @throws  Kohana_Exception
      * @throws  Exception
      */
     public function cancel_subscription($account_id, $requested_by)
@@ -186,11 +166,17 @@ class Kohana_Subscription_Manager {
 
         if ( ! $subscription_model->loaded())
         {
-            throw new Subscription_Exception('Can not load subscription for account id: '.$account_id);
+            throw new Kohana_Exception(
+                'Can not find the subscription for account id :account_id.', array(
+                ':account_id' => $account_id
+            ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
         }
 
+        // Get grace period
+        $grace_period = Kohana::$config->load('account')->get('account_cancellation_grace_period');
+
         // Begin transaction
-        $subscription_model->begin();
+        $this->begin_transaction();
 
         try
         {
@@ -203,22 +189,22 @@ class Kohana_Subscription_Manager {
             ORM::factory('Account_Deletion_Request')
                 ->set('account_id', $account_id)
                 ->set('requested_by', $requested_by)
-                ->set('requested_on', date('Y-m-d H:i:s'))
+                ->set('due_on', date('Y-m-d H:i:s', time() + $grace_period * 24 *3600))
                 ->save();
 
             if (self::$use_cache)
             {
-                // Update the cache
-                Subscription_Cache::instance()->save($account_id, $subscription_model->as_array());
+                // Sync cache
+                $this->cache()->sync_subscription_data($account_id, $subscription_model->as_array());
             }
 
-            // Everything is fine, commit
-            $subscription_model->commit();
+            // Everything was going fine, commit
+            $this->commit_transaction();
         }
         catch (Exception $e)
         {
             // Something went wrong, rollback
-            $subscription_model->rollback();
+            $this->rollback_transaction();
 
             // Re-throw exception
             throw $e;
@@ -229,7 +215,7 @@ class Kohana_Subscription_Manager {
      * Restore a subscription
      *
      * @param   int     $account_id
-     * @throws  Subscription_Exception
+     * @throws  Kohana_Exception
      * @throws  Exception
      */
     public function restore_subscription($account_id)
@@ -240,11 +226,14 @@ class Kohana_Subscription_Manager {
 
         if ( ! $subscription_model->loaded())
         {
-            throw new Subscription_Exception('Can not load subscription for account id: '.$account_id);
+            throw new Kohana_Exception(
+                'Can not find the subscription for account id :account_id.', array(
+                ':account_id' => $account_id
+            ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
         }
 
         // Begin transaction
-        $subscription_model->begin();
+        $this->begin_transaction();
 
         try
         {
@@ -260,17 +249,17 @@ class Kohana_Subscription_Manager {
 
             if (self::$use_cache)
             {
-                // Update the cache
-                Subscription_Cache::instance()->save($account_id, $subscription_model->as_array());
+                // Sync cache
+                $this->cache()->sync_subscription_data($account_id, $subscription_model->as_array());
             }
 
-            // Everything is fine, commit
-            $subscription_model->commit();
+            // Everything was going fine, commit
+            $this->commit_transaction();
         }
         catch (Exception $e)
         {
             // Something went wrong, rollback
-            $subscription_model->rollback();
+            $this->rollback_transaction();
 
             // Re-throw exception
             throw $e;
@@ -305,10 +294,10 @@ class Kohana_Subscription_Manager {
         // Get grace period
         $grace_period = Kohana::$config->load('account')->get('subscription_expiration_grace_period');
 
-        $now = time();
+        // Get expiration time
         $expires_on = strtotime($subscription_data['expires_on']);
 
-        return ($subscription_data['expired'] == 1) || ($now > $expires_on + $grace_period * 24 *3600);
+        return ($subscription_data['expired'] == 1) || (time() > $expires_on + $grace_period * 24 *3600);
     }
 
     /**
@@ -325,7 +314,10 @@ class Kohana_Subscription_Manager {
         // Get grace period length
         $grace_period = Kohana::$config->load('account')->get('subscription_expiration_grace_period');
 
+        // Get current time
         $now = time();
+
+        // Get expiration time
         $expires_on = strtotime($subscription_data['expires_on']);
 
         return ($now > $expires_on) && ($now <= $expires_on + $grace_period * 24 *3600);
@@ -379,7 +371,7 @@ class Kohana_Subscription_Manager {
      * @param   int     $account_id
      * @param   int     $expires_on     In timestamp format
      * @param   int     $payment_id
-     * @throws  Subscription_Exception
+     * @throws  Kohana_Exception
      * @throws  Exception
      */
     public function extend_subscription($account_id, $expires_on, $payment_id = NULL)
@@ -390,11 +382,14 @@ class Kohana_Subscription_Manager {
 
         if ( ! $subscription_model->loaded())
         {
-            throw new Subscription_Exception('Can not load subscription for account id: '.$account_id);
+            throw new Kohana_Exception(
+                'Can not find the subscription for account id :account_id.', array(
+                ':account_id' => $account_id
+            ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
         }
 
         // Begin transaction
-        $subscription_model->begin();
+        $this->begin_transaction();
 
         try
         {
@@ -415,18 +410,18 @@ class Kohana_Subscription_Manager {
 
             if (self::$use_cache)
             {
-                // Update the cache
-                Subscription_Cache::instance()->save($account_id, $subscription_model->as_array());
+                // Sync cache
+                $this->cache()->sync_subscription_data($account_id, $subscription_model->as_array());
             }
 
-            // Everything is fine, commit
-            $subscription_model->commit();
+            // Everything was going fine, commit
+            $this->commit_transaction();
 
         }
         catch (Exception $e)
         {
             // Something went wrong, rollback
-            $subscription_model->rollback();
+            $this->rollback_transaction();
 
             // Re-throw the exception
             throw $e;
@@ -440,7 +435,7 @@ class Kohana_Subscription_Manager {
      * @param   string  $plan
      * @param   int     $expires_on     In timestamp format
      * @param   int     $payment_id
-     * @throws  Subscription_Exception
+     * @throws  Kohana_Exception
      * @throws  Exception
      */
     public function change_subscription_plan($account_id, $plan, $expires_on, $payment_id = NULL)
@@ -451,11 +446,14 @@ class Kohana_Subscription_Manager {
 
         if ( ! $subscription_model->loaded())
         {
-            throw new Subscription_Exception('Can not load subscription for account id: '.$account_id);
+            throw new Kohana_Exception(
+                'Can not find the subscription for account id :account_id.', array(
+                ':account_id' => $account_id
+            ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
         }
 
         // Begin transaction
-        $subscription_model->begin();
+        $this->begin_transaction();
 
         try
         {
@@ -477,18 +475,18 @@ class Kohana_Subscription_Manager {
 
             if (self::$use_cache)
             {
-                // Update the cache
-                Subscription_Cache::instance()->save($account_id, $subscription_model->as_array());
+                // Sync cache
+                $this->cache()->sync_subscription_data($account_id, $subscription_model->as_array());
             }
 
-            // Everything is fine, commit
-            $subscription_model->commit();
+            // Everything was going fine, commit
+            $this->commit_transaction();
 
         }
         catch (Exception $e)
         {
             // Something went wrong, rollback
-            $subscription_model->rollback();
+            $this->rollback_transaction();
 
             // Re-throw the exception
             throw $e;
@@ -528,13 +526,7 @@ class Kohana_Subscription_Manager {
      */
     public function supervise_subscriptions()
     {
-        // Get grace period
-        $grace_period = Kohana::$config->load('account')->get('subscription_expiration_grace_period');
-
-        // Calculate start time
-        $start_time = time() - $grace_period * 24 * 3600;
-
-        $this->subscription_model()->supervise_subscriptions($start_time);
+        $this->subscription_model()->supervise_subscriptions(time());
     }
 
     /**
@@ -550,21 +542,6 @@ class Kohana_Subscription_Manager {
         }
 
         return $this->_subscription_model;
-    }
-
-    /**
-     * Returns a singleton instance of the class
-     *
-     * @return  Subscription_Manager
-     */
-    public static function instance()
-    {
-        if ( ! Subscription_Manager::$_instance instanceof Subscription_Manager)
-        {
-            Subscription_Manager::$_instance = new Subscription_Manager();
-        }
-
-        return Subscription_Manager::$_instance;
     }
 }
 
