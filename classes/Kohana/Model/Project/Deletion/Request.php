@@ -17,7 +17,7 @@ class Kohana_Model_Project_Deletion_Request extends ORM {
     protected $_table_columns = array(
         'request_id' => array(),
         'project_id' => array(),
-        'requested_on' => array()
+        'due_on' => array()
     );
 
     /**
