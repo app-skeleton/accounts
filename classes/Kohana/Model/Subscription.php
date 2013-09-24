@@ -25,26 +25,6 @@ class Kohana_Model_Subscription extends ORM {
     );
 
     /**
-     * Defines validation rules
-     *
-     * @return  array
-     */
-    public function rules()
-    {
-        return array();
-    }
-
-    /**
-     * Defines filters
-     *
-     * @return  array
-     */
-    public function filters()
-    {
-        return array();
-    }
-
-    /**
      * Set all the subscriptions with the grace period ended `expired`
      *
      * @param   int     $start_time
@@ -56,30 +36,6 @@ class Kohana_Model_Subscription extends ORM {
             ->where('expires_on', '<', date('Y-m-d H:i:s', $start_time))
             ->execute($this->_db);
     }
-
-    /**
-     * Begin a transaction
-     */
-    public function begin()
-    {
-        $this->_db->begin();
-    }
-
-    /**
-     * Commit a transaction
-     */
-    public function commit()
-    {
-        $this->_db->commit();
-    }
-
-    /**
-     * Rollback a transaction
-     */
-    public function rollback()
-    {
-        $this->_db->rollback();
-    }
 }
 
-// END Kohana_Model_Account
+// END Kohana_Model_Subscription
