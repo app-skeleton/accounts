@@ -11,29 +11,29 @@
 class Kohana_Account_Cache  {
 
     /**
-     * @var Account_Cache       A singleton instance
+     * @var Account_Cache           A singleton instance
      */
     protected static $_instance;
 
     /**
-     * @var string              The key prefixes to use with caching
+     * @var string                  The key prefix to use for caching user related data
      */
-    public static $prefix = 'usr_acc';
+    public static $user_prefix = 'usr_acc';
 
     /**
-     * @var int                 The lifetime of cache keys
+     * @var string                  The key prefix to use for caching subscription related data
      */
-    public static $expiration = 3600;
+    public static $subscr_prefix = 'subscr';
 
     /**
-     * @var object              The cache client
+     * @var int                     The lifetime of cache keys in seconds
+     */
+    public static $expiration = 7200;
+
+    /**
+     * @var object                  The cache client
      */
     protected $_client;
-
-    /**
-     * @var bool                Whether to save to cache, only if previous version of data exists
-     */
-    protected $_update_only = TRUE;
 
     /**
      * Construct
@@ -44,43 +44,18 @@ class Kohana_Account_Cache  {
     }
 
     /**
-     * Add a new account id to the user data
-     *
-     * @param   int     $user_id
-     * @param   int     $account_id
-     */
-    public function add_account($user_id, $account_id)
-    {
-        $account_ids = (array)$this->load_accounts($user_id);
-        array_push($account_ids, $account_id);
-        $account_ids = array_values(array_unique($account_ids));
-
-        $this->save_accounts($user_id, $account_ids);
-    }
-
-    /**
-     * Remove an account id from the user data
-     *
-     * @param   int     $user_id
-     * @param   int     $account_id
-     */
-    public function remove_account($user_id, $account_id)
-    {
-        $account_ids = (array)$this->load_accounts($user_id);
-        $account_ids = array_values(array_diff($account_ids, array($account_id)));
-
-        $this->save_accounts($user_id, $account_ids);
-    }
-
-    /**
-     * Save the user accounts in the cache
+     * Sync user account ids with database
      *
      * @param   int     $user_id
      * @param   array   $account_ids
      */
-    public function save_accounts($user_id, $account_ids)
+    public function sync_accounts($user_id, $account_ids = NULL)
     {
-        $this->_save($user_id, 'a', $account_ids);
+        $account_ids = isset($account_ids)
+            ? $account_ids
+            : ORM::factory('Account')->get_user_account_ids($user_id);
+
+        $this->_save_user_data($user_id, 'a', $account_ids);
     }
 
     /**
@@ -91,60 +66,23 @@ class Kohana_Account_Cache  {
      */
     public function load_accounts($user_id)
     {
-        return $this->_load($user_id, 'a');
+        return $this->_load_user_data($user_id, 'a');
     }
 
     /**
-     * Give new permissions to the given user on the given account
+     * Sync user permissions with database
      *
      * @param   int     $user_id
      * @param   int     $account_id
      * @param   array   $permissions
      */
-    public function grant_account_permission($user_id, $account_id, $permissions)
+    public function sync_account_permissions($user_id, $account_id, $permissions = NULL)
     {
-        $account_permissions = (array)$this->load_account_permissions($user_id, $account_id);
-        $account_permissions = array_values(array_unique(array_merge($account_permissions, (array)$permissions)));
+        $permissions = isset($permissions)
+            ? $permissions
+            : ORM::factory('Account')->get_permissions($account_id, $user_id);
 
-        $this->save_account_permissions($user_id, $account_id, $account_permissions);
-    }
-
-    /**
-     * Revoke permissions from the given user on the given account
-     *
-     * @param   int     $user_id
-     * @param   int     $account_id
-     * @param   array   $permissions
-     */
-    public function revoke_account_permission($user_id, $account_id, $permissions)
-    {
-        $account_permissions = (array)$this->load_account_permissions($user_id, $account_id);
-        $account_permissions = array_values(array_diff($account_permissions, (array)$permissions));
-
-        $this->save_account_permissions($user_id, $account_id, $account_permissions);
-    }
-
-    /**
-     * Revoke all permissions from the given user on the given account
-     *
-     * @param   int     $user_id
-     * @param   int     $account_id
-     */
-    public function revoke_all_account_permissions($user_id, $account_id)
-    {
-        $this->save_account_permissions($user_id, $account_id, array());
-    }
-
-    /**
-     * Save the user accounts in the cache
-     *
-     * @param   int     $user_id
-     * @param   int     $account_id
-     * @param   array   $permissions
-     */
-    public function save_account_permissions($user_id, $account_id, $permissions)
-    {
-        $this->_save($user_id, 'a'.$account_id, $permissions);
+        $this->_save_user_data($user_id, 'a'.$account_id, $permissions);
     }
 
     /**
@@ -152,50 +90,23 @@ class Kohana_Account_Cache  {
      *
      * @param   int     $user_id
      * @param   int     $account_id
-     * @return  mixed
+     * @return  array
      */
     public function load_account_permissions($user_id, $account_id)
     {
-        return $this->_load($user_id, 'a'.$account_id);
+        return $this->_load_user_data($user_id, 'a'.$account_id);
     }
 
     /**
-     * Add new projects to the given user
-     *
-     * @param   int         $user_id
-     * @param   int|array   $project_id
-     */
-    public function add_project($user_id, $project_id)
-    {
-        $project_ids = (array)$this->load_projects($user_id);
-        $project_ids = array_values(array_unique(array_merge($project_ids, (array)$project_id)));
-
-        $this->save_projects($user_id, $project_ids);
-    }
-
-    /**
-     * Remove one or more projects from the given user
-     *
-     * @param   int         $user_id
-     * @param   int|array   $project_id
-     */
-    public function remove_project($user_id, $project_id)
-    {
-        $project_ids = (array)$this->load_projects($user_id);
-        $project_ids = array_values(array_diff($project_ids, (array)$project_id));
-
-        $this->save_projects($user_id, $project_ids);
-    }
-
-    /**
-     * Save the user projects in the cache
+     * Sync user projects with database
      *
      * @param   int     $user_id
      * @param   array   $project_ids
      */
-    public function save_projects($user_id, $project_ids)
+    public function sync_projects($user_id, $project_ids = NULL)
     {
-        $this->_save($user_id, 'p', $project_ids);
+        $project_ids = $project_ids ?: ORM::factory('Project')->get_user_project_ids($user_id);
+        $this->_save_user_data($user_id, 'p', $project_ids);
     }
 
     /**
@@ -206,56 +117,42 @@ class Kohana_Account_Cache  {
      */
     public function load_projects($user_id)
     {
-        return $this->_load($user_id, 'p');
+        return $this->_load_user_data($user_id, 'p');
     }
 
-
     /**
-     * Save data to cache
+     * Save user related data to cache
      *
      * @param   int     $user_id
      * @param   string  $field
      * @param   array   $data
      */
-    protected function _save($user_id, $field, $data)
+    protected function _save_user_data($user_id, $field, $data)
     {
-        if ( ! $this->update_only() || $this->data_exists($user_id))
-        {
-            $key = self::$prefix.$user_id;
-            $this->_client->hSet($key, $field, json_encode($data));
+        $key = self::$user_prefix.$user_id;
+        $this->_client->hSet($key, $field, json_encode($data));
 
-            if (self::$expiration)
-            {
-                $this->_client->expire($key, self::$expiration);
-            }
+        if (self::$expiration)
+        {
+            $this->_client->expire($key, self::$expiration);
         }
     }
 
     /**
-     * Load data from cache
+     * Load user related data from cache
      *
      * @param   int     $user_id
      * @param   string  $field
      * @return  mixed
      */
-    protected function _load($user_id, $field)
+    protected function _load_user_data($user_id, $field)
     {
-        $key = self::$prefix.$user_id;
+        $key = self::$user_prefix.$user_id;
         $data = $this->_client->hGet($key, $field);
 
-        return $data !== FALSE ? json_decode($data) : NULL;
-    }
-
-    /**
-     * Check if cached data for the given user exists
-     *
-     * @param   int     $user_id
-     * @return  bool
-     */
-    public function data_exists($user_id)
-    {
-        $key = self::$prefix.$user_id;
-        return $this->_client->exists($key);
+        return $data !== FALSE
+            ? json_decode($data)
+            : NULL;
     }
 
     /**
@@ -263,10 +160,79 @@ class Kohana_Account_Cache  {
      *
      * @param   int     $user_id
      */
-    public function delete_data($user_id)
+    public function delete_user_data($user_id)
     {
-        $key = self::$prefix.$user_id;
+        $key = self::$user_prefix.$user_id;
         $this->_client->del($key);
+    }
+
+    /**
+     * Sync subscription data with database
+     *
+     * @param   int     $account_id
+     * @param   array   $subscription_data
+     * @throws  Kohana_Exception
+     */
+    public function sync_subscription_data($account_id, $subscription_data = NULL)
+    {
+        if ( ! isset($subscription_data))
+        {
+            $subscription_model = ORM::factory('Subscription')
+                ->where('account_id', '=', $account_id)
+                ->find();
+
+            if ( ! $subscription_model->loaded())
+            {
+                throw new Kohana_Exception(
+                    'Can not find the subscription for account id :account_id.', array(
+                    ':account_id' => $account_id
+                ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
+            }
+
+            $subscription_data = $subscription_model->as_array();
+        }
+
+        unset($subscription_data['account_id']);
+        $key = self::$subscr_prefix.$account_id;
+        $this->_client->hMset($key, $subscription_data);
+
+        if (self::$expiration)
+        {
+            $this->_client->expire($key, self::$expiration);
+        }
+    }
+
+    /**
+     * Load subscription data from cache
+     *
+     * @param   int     $account_id
+     * @return  mixed
+     */
+    public function load_subscription_data($account_id)
+    {
+        $key = self::$subscr_prefix.$account_id;
+        $data = $this->_client->hGetAll($key);
+
+        if ( ! empty($data))
+        {
+            $data['account_id'] = $account_id;
+        }
+        else
+        {
+            $data = NULL;
+        }
+        return $data;
+    }
+
+    /**
+     * Delete subscription data from cache
+     *
+     * @param   $account_id
+     */
+    public function delete_subscription_data($account_id)
+    {
+        $key = self::$subscr_prefix.$account_id;
+        $this->_client->delete($key);
     }
 
     /**
@@ -291,22 +257,6 @@ class Kohana_Account_Cache  {
     public function discard()
     {
         $this->_client->discard();
-    }
-
-    /**
-     * Set/Get the `update_ony` property
-     *
-     * @param   bool    $update_only
-     * @return  bool
-     */
-    public function update_only($update_only = NULL)
-    {
-        if (isset($update_only))
-        {
-            $this->_update_only = $update_only;
-        }
-
-        return $this->_update_only;
     }
 
     /**
