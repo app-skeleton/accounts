@@ -18,7 +18,7 @@ class Kohana_Model_Account_Deletion_Request extends ORM {
         'request_id' => array(),
         'account_id' => array(),
         'requested_by' => array(),
-        'requested_on' => array()
+        'due_on' => array()
     );
 
     /**
