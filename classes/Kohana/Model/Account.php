@@ -23,6 +23,22 @@ class Kohana_Model_Account extends ORM {
     );
 
     /**
+     * Status constants
+     */
+    const STATUS_USER_INVITED       = 'INVITED';
+    const STATUS_USER_LINKED        = 'LINKED';
+    const STATUS_USER_REMOVED       = 'REMOVED';
+    const STATUS_USER_LEFT          = 'LEFT';
+
+    /**
+     * Permission constants
+     */
+    const PERM_OWNER                = 'OWNER';
+    const PERM_ADMIN                = 'ADMIN';
+    const PERM_ACCOUNT_MANAGER      = 'ACCOUNT_MANAGER';
+    const PERM_CREATE_PROJECTS      = 'CREATE_PROJECTS';
+
+    /**
      * Defines validation rules
      *
      * @return  array
@@ -51,21 +67,6 @@ class Kohana_Model_Account extends ORM {
     }
 
     /**
-     * Return the user id of the owner
-     *
-     * @param   int     $account_id
-     * @return  mixed
-     */
-    public function get_account_owner_id($account_id)
-    {
-        return DB::select('owner_id')
-            ->from('accounts')
-            ->where('account_id', '=', DB::expr($account_id))
-            ->execute($this->_db)
-            ->get('owner_id');
-    }
-
-    /**
      * Get data about the owner of the given account
      *
      * @param   int     $account_id
@@ -90,22 +91,7 @@ class Kohana_Model_Account extends ORM {
             ->execute($this->_db)
             ->current();
 
-        return $user_data ? $user_data : NULL;
-
-    }
-
-    /**
-     * Make the given user the owner of the given account
-     *
-     * @param   int     $account_id
-     * @param   int     $user_id
-     */
-    public function change_account_owner($account_id, $user_id)
-    {
-        DB::update('accounts')
-            ->set(array('owner_id' => $user_id))
-            ->where('account_id', '=', DB::expr($account_id))
-            ->execute($this->_db);
+        return $user_data ?: NULL;
     }
 
     /**
@@ -163,7 +149,7 @@ class Kohana_Model_Account extends ORM {
             ->execute($this->_db)
             ->current();
 
-        return $user_data ? $user_data : NULL;
+        return $user_data ?: NULL;
     }
 
     /**
@@ -185,8 +171,7 @@ class Kohana_Model_Account extends ORM {
             ->join(array('accounts_users', 'au'))
             ->on('au.account_id', '=', 'a.account_id')
             ->on('au.user_id', '=', DB::expr($user_id))
-            ->on('au.status', '!=', DB::expr("'removed'"))
-            ->on('au.status', '!=', DB::expr("'left'"))
+            ->on('au.status', '=', DB::expr("'".Model_Account::STATUS_USER_LINKED."'"))
             ->execute($this->_db)
             ->as_array();
     }
@@ -270,7 +255,7 @@ class Kohana_Model_Account extends ORM {
             ->execute($this->_db)
             ->current();
 
-        return $user_data ? $user_data : NULL;
+        return $user_data ?: NULL;
     }
 
     /**
@@ -298,8 +283,7 @@ class Kohana_Model_Account extends ORM {
             ->join(array('accounts_users', 'au'))
             ->on('au.account_id', '=', 'p.account_id')
             ->on('au.user_id', '=', 'pu2.user_id')
-            ->on('au.status', '!=', DB::expr("'removed'"))
-            ->on('au.status', '!=', DB::expr("'left'"))
+            ->on('au.status', '=', DB::expr("'".Model_Identity::STATUS_ACTIVE."'"))
             ->join(array('users', 'u'))
             ->on('u.user_id', '=', 'pu2.user_id')
             ->join(array('accounts', 'a'))
@@ -326,11 +310,11 @@ class Kohana_Model_Account extends ORM {
      *
      * @param   int             $account_id
      * @param   int             $user_id
-     * @param   string|array    $permission
+     * @param   string|array    $permissions
      */
-    public function grant_permission($account_id, $user_id, $permission)
+    public function grant_permission($account_id, $user_id, $permissions)
     {
-        $permissions = (array)$permission;
+        $permissions = (array)$permissions;
 
         $query = DB::insert('account_permissions');
         foreach ($permissions as $permission)
@@ -399,18 +383,16 @@ class Kohana_Model_Account extends ORM {
     }
 
     /**
-     * Check if there is an account created by the user with the given email address
+     * Check if there is an account created by the given user
      *
-     * @param   int     $email
+     * @param   int     $user_id
      * @return  bool
      */
-    public function unique_email($email)
+    public function user_has_account($user_id)
     {
-        return ! (bool) DB::select(array(DB::expr('COUNT("*")'), 'total_count'))
-            ->from(array($this->_table_name, 'a'))
-            ->join(array('user_identities', 'ui'))
-            ->on('ui.email', '=', DB::expr("'".$email."'"))
-            ->on('ui.user_id', '=', 'a.created_by')
+        return (bool) DB::select(array(DB::expr('COUNT("*")'), 'total_count'))
+            ->from($this->_table_name)
+            ->where('created_by', '=', DB::expr($user_id))
             ->execute($this->_db)
             ->get('total_count');
     }
@@ -418,9 +400,9 @@ class Kohana_Model_Account extends ORM {
     /**
      * Do garbage collection
      *
-     * @param   int     $start_date
+     * @param   int     $time
      */
-    public function garbage_collector($start_date)
+    public function garbage_collector($time)
     {
         // Delete all canceled accounts, with a deletion request older than $grace_period
         $sql = "DELETE accounts
@@ -433,32 +415,8 @@ class Kohana_Model_Account extends ORM {
                 AND account_deletion_requests.requested_on < :start_date)";
 
         DB::query(Database::DELETE, $sql)
-            ->bind(':start_date', $start_date)
+            ->bind(':start_date', date('Y-m-d H:i:s', $time))
             ->execute($this->_db);
-    }
-
-    /**
-     * Begin a transaction
-     */
-    public function begin()
-    {
-        $this->_db->begin();
-    }
-
-    /**
-     * Commit a transaction
-     */
-    public function commit()
-    {
-        $this->_db->commit();
-    }
-
-    /**
-     * Rollback a transaction
-     */
-    public function rollback()
-    {
-        $this->_db->rollback();
     }
 }
 
