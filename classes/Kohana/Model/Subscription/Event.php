@@ -25,26 +25,6 @@ class Kohana_Model_Subscription_Event extends ORM {
     );
 
     /**
-     * Defines validation rules
-     *
-     * @return  array
-     */
-    public function rules()
-    {
-        return array();
-    }
-
-    /**
-     * Defines filters
-     *
-     * @return  array
-     */
-    public function filters()
-    {
-        return array();
-    }
-
-    /**
      * Get all the subscription events for the given account
      *
      * @param   int     $account_id
