@@ -25,6 +25,11 @@ class Kohana_Model_Project extends ORM {
     );
 
     /**
+     * @var bool    Whether to use cache
+     */
+    public static $use_cache = TRUE;
+
+    /**
      * Defines validation rules
      *
      * @return  array
@@ -133,26 +138,6 @@ class Kohana_Model_Project extends ORM {
             ->where('user_id', '=', $user_id)
             ->and_where('project_id', 'IN', (array)$project_id)
             ->execute($this->_db);
-    }
-
-    /**
-     * Check if the given user is linked to one or more projects
-     *
-     * @param   int|array       $project_id
-     * @param   int             $user_id
-     * @return  bool
-     */
-    public function is_user_linked($project_id, $user_id)
-    {
-        $project_id = (array)$project_id;
-
-        // Check if user is added to all of the given projects
-        return count($project_id) == DB::select(array(DB::expr('COUNT("*")'), 'total_count'))
-            ->from('projects_users')
-            ->where('project_id', 'IN', $project_id)
-            ->where('user_id', '=', DB::expr($user_id))
-            ->execute($this->_db)
-            ->get('total_count');
     }
 
     /**
@@ -300,11 +285,10 @@ class Kohana_Model_Project extends ORM {
     /**
      * Do garbage collection
      *
-     * @param   int     $start_date   Grace period in days
+     * @param   int     $start_time
      */
-    public function garbage_collector($start_date)
+    public function garbage_collector($start_time)
     {
-        // Delete all projects from trash, with a deletion request older than $grace_period
         $sql = "DELETE projects
                 FROM projects
                 JOIN project_deletion_requests
@@ -313,32 +297,8 @@ class Kohana_Model_Project extends ORM {
                 WHERE projects.deleted = 1";
 
         DB::query(Database::DELETE, $sql)
-            ->bind(':start_date', $start_date)
+            ->bind(':start_date', date('Y-m-d H:i:s', $start_time))
             ->execute($this->_db);
-    }
-
-    /**
-     * Begin a transaction
-     */
-    public function begin()
-    {
-        $this->_db->begin();
-    }
-
-    /**
-     * Commit a transaction
-     */
-    public function commit()
-    {
-        $this->_db->commit();
-    }
-
-    /**
-     * Rollback a transaction
-     */
-    public function rollback()
-    {
-        $this->_db->rollback();
     }
 }
 
