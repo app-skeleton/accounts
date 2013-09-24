@@ -8,12 +8,7 @@
  *
  */
 
-class Kohana_Account_Manager {
-
-    /**
-     * @var Account_Manager     A singleton instance
-     */
-    protected static $_instance;
+class Kohana_Account_Manager extends Account_Service_Manager {
 
     /**
      * @var ORM                 An instance of the Model_Account class
@@ -21,182 +16,109 @@ class Kohana_Account_Manager {
     protected $_account_model;
 
     /**
-     * @var bool                Whether to cache the users accounts, and user account permissions (these are most frequently queried)
-     */
-    public static $use_cache = TRUE;
-
-    /**
-     * Status constants
-     */
-    const STATUS_USER_INVITED       = 'invited';
-    const STATUS_USER_LINKED        = 'linked';
-    const STATUS_USER_REMOVED       = 'removed';
-    const STATUS_USER_LEFT          = 'left';
-    const PERM_OWNER                = 'owner';
-    const PERM_ADMIN                = 'admin';
-    const PERM_ACCOUNT_MANAGER      = 'account_manager';
-    const PERM_CREATE_PROJECTS      = 'create_projects';
-
-    /**
-     * Create an account
+     * Create a new user and account
      *
      * @param   int     $user_id
      * @param   array   $user_values
      * @param   array   $account_values
-     * @param   array   $subscription_values
+     * @param   string  $plan
+     * @throws  Auth_Exception
+     * @throws  Validation_Exception
+     * @throws  Account_Exception
      * @throws  Exception
-     * @throws  User_Validation_Exception
-     * @throw   ORM_Validation_Exception
      * @return  array
      */
-    public function create_account($user_id, $user_values, $account_values, $subscription_values)
+    public function create_account($user_id, $user_values, $account_values, $plan)
     {
-        if ( ! isset($user_id))
-        {
-            // We have to create a new user
-            $user_errors = array();
-            $identity_errors = array();
+        // Initialize models data
+        $models_data = array();
 
-            // Create the user and identity models
-            $user_model = ORM::factory('User');
-            $identity_model = ORM::factory('Identity');
+        // Get the user manager
+        $user_manager = User_Manager::instance();
 
-            // Get user validation errors
-            $user_model->values($user_values);
-
-            try
-            {
-                $user_model->check();
-            }
-            catch (ORM_Validation_Exception $e)
-            {
-                $user_errors = $e->errors('models/'.i18n::lang().'/user', FALSE);
-            }
-
-            // Get identity validation errors
-            $identity_model->values($user_values);
-
-            try
-            {
-                $identity_model->check($identity_model->get_password_validation($user_values));
-            }
-            catch (ORM_Validation_Exception $e)
-            {
-                $identity_errors = $e->errors('models/'.i18n::lang().'/user', FALSE);
-                if (isset($identity_errors['_external']))
-                {
-                    $identity_external_errors = $identity_errors['_external'];
-                    unset($identity_errors['_external']);
-                    $identity_errors = array_merge($identity_errors, $identity_external_errors);
-                }
-            }
-
-            // Merge user and identity validation errors
-            $errors = array_merge($user_errors, $identity_errors);
-
-            // If validation fails, throw an exception
-            if ($errors)
-            {
-                throw new User_Validation_Exception($errors);
-            }
-
-            // No validation errors, make sure we have an account name
-            if (empty($account_values['name']))
-            {
-                $account_values['name'] = trim($user_values['first_name'].' '.$user_values['last_name'])."'s ".APPNAME;
-            }
-        }
-        else
-        {
-            // User already exists, make sure we have an account name
-            if (empty($account_values['name']))
-            {
-                $user_manager = User_Manager::instance();
-                $user_data = $user_manager->get_user_data($user_id);
-                $account_values['name'] = trim($user_data['first_name'].' '.$user_data['last_name'])."'s ".APPNAME;
-            }
-        }
+        // Get the subscription manager
+        $subscription_manager = Subscription_Manager::instance();
 
         // Start the transaction
-        $account_model = ORM::factory('Account');
-        $account_model->begin();
-        $models_data = array();
+        $this->begin_transaction();
 
         try
         {
-            if ( ! isset($user_id))
+            if (empty($user_id))
             {
-                // Save the user
-                $user_model->save();
-                $user_id = $user_model->pk();
-                $models_data['user'] = $user_model->as_array();
+                // Sign up the user
+                $models_data = $user_manager->signup_user($user_values, FALSE);
+                $user_id = $models_data['user']['user_id'];
 
-                // Setup identity
-                $identity_model->set('user_id', $user_id);
-                $identity_model->set('status', Identity::STATUS_ACTIVE);
+                // Make sure we have an account name
+                if (empty($account_values['name']))
+                {
+                    $account_values['name'] = trim(Arr::get($user_values, 'first_name').' '.Arr::get($user_values, 'last_name'))."'s ".APPNAME;
+                }
+            }
+            else
+            {
+                // Make sure the user has no account
+                if ($this->user_has_account($user_id))
+                {
+                    throw new Account_Exception(Account_Exception::E_USER_HAS_ACCOUNT);
+                }
 
-                // Save the identity
-                $identity_model->save();
-                $models_data['identity'] = $identity_model->as_array();
+                // Make sure we have an account name
+                if (empty($account_values['name']))
+                {
+                    $user_data = $user_manager->get_user_data($user_id);
+                    $account_values['name'] = trim(Arr::get($user_data, 'first_name').' '.Arr::get($user_data, 'last_name'))."'s ".APPNAME;
+                }
             }
 
+            // Prepare account values
             $account_values = array_merge($account_values, array(
                 'owner_id' => $user_id,
                 'created_by' => $user_id,
                 'created_on' => date('Y-m-d H:i:s')
             ));
 
-            // Create the account
-            $account_model
+            // Save the account
+            $account_model = ORM::factory('Account')
                 ->values($account_values)
                 ->save();
 
             $account_id = $account_model->pk();
             $models_data['account'] = $account_model->as_array();
 
-            // Create subscription
-            $plan_list = Kohana::$config->load('account/plans');
-            $subscription_values = array_merge($subscription_values, array(
-                'account_id' => $account_id,
-                'expires_on' => date('Y-m-d H:i:s', time() + $plan_list[$plan]['time_limit'] * 24 * 3600),
-                'expired' => 0,
-                'paused' => 0,
-                'canceled' => 0
-            ));
-            $subscription_model = ORM::factory('Subscription');
-            $subscription_model
-                ->values($subscription_values)
-                ->save();
-
-            $models_data['subscription'] = $subscription_model->as_array();
-
             // Add the user to the account
-            $account_model->add_user($account_id, $user_id, NULL, self::STATUS_USER_LINKED);
+            $account_model->add_user($account_id, $user_id, NULL, Model_Account::STATUS_USER_LINKED);
 
             // Grant permissions to the user on the account
-            $account_model->grant_permission($account_id, $user_id, array(
-                self::PERM_OWNER,
-                self::PERM_ACCOUNT_MANAGER,
-                self::PERM_ADMIN,
-                self::PERM_CREATE_PROJECTS
-            ));
+            $permissions = array(
+                Model_Account::PERM_OWNER,
+                Model_Account::PERM_ACCOUNT_MANAGER,
+                Model_Account::PERM_ADMIN,
+                Model_Account::PERM_CREATE_PROJECTS
+            );
 
-            // Write subscription data to cache
-            if (Subscription_Manager::$use_cache)
+            $account_model->grant_permission($account_id, $user_id, $permissions);
+
+            // Sync cache
+            if (self::$use_cache)
             {
-                // Save subscription to cache
-                Subscription_Cache::instance()->save($subscription_model->get('account_id'), $subscription_model->as_array());
+                $this->cache()->sync_accounts($user_id);
+                $this->cache()->sync_account_permissions($user_id, $account_id, $permissions);
             }
 
+            // Save the subscription
+            $models_data['subscription'] = $subscription_manager->create_subscription($account_id, $plan, FALSE);
+
             // Everything was going fine, commit
-            $account_model->commit();
+            $this->commit_transaction();
 
             return $models_data;
         }
         catch (Exception $e)
         {
             // Something went wrong, rollback
-            $account_model->rollback();
+            $this->rollback_transaction();
 
             // Re-throw the exception
             throw $e;
@@ -209,7 +131,7 @@ class Kohana_Account_Manager {
      * @param   int     $account_id
      * @param   array   $values
      * @throws  Validation_Exception
-     * @throws  Account_Exception
+     * @throws  Kohana_Exception
      * @return  array
      */
     public function update_account($account_id, $values)
@@ -218,7 +140,10 @@ class Kohana_Account_Manager {
 
         if ( ! $account_model->loaded())
         {
-            throw new Account_Exception('Can not load account with id: '.$account_id);
+            throw new Kohana_Exception(
+                'Can not find the account with id :account_id.', array(
+                ':account_id' => $account_id
+            ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
         }
 
         try
@@ -254,7 +179,7 @@ class Kohana_Account_Manager {
      * Get data about an account
      *
      * @param   int $account_id
-     * @throws  Account_Exception
+     * @throws  Kohana_Exception
      * @return  array
      */
     public function get_account_data($account_id)
@@ -263,7 +188,10 @@ class Kohana_Account_Manager {
 
         if ( ! $account_model->loaded())
         {
-            throw new Account_Exception('Can not load account with id: '.$account_id);
+            throw new Kohana_Exception(
+                'Can not find the account with id :account_id.', array(
+                ':account_id' => $account_id
+            ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
         }
 
         return $account_model->as_array();
@@ -273,7 +201,7 @@ class Kohana_Account_Manager {
      * Delete an account
      *
      * @param   int     $account_id
-     * @throws  Account_Exception
+     * @throws  Kohana_Exception
      */
     public function delete_account($account_id)
     {
@@ -281,7 +209,10 @@ class Kohana_Account_Manager {
 
         if ( ! $account_model->loaded())
         {
-            throw new Account_Exception('Can not load account with id: '.$account_id);
+            throw new Kohana_Exception(
+                'Can not find the account with id :account_id.', array(
+                ':account_id' => $account_id
+            ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
         }
 
         // Delete account
@@ -292,11 +223,23 @@ class Kohana_Account_Manager {
      * Return the user id of the owner
      *
      * @param   int     $account_id
+     * @throws  Kohana_Exception
      * @return  mixed
      */
     public function get_account_owner_id($account_id)
     {
-        return $this->account_model()->get_account_owner_id($account_id);
+        $account_model = ORM::factory('Account', $account_id);
+
+        if ( ! $account_model->loaded())
+        {
+            throw new Kohana_Exception(
+                'Can not find the account with id :account_id.', array(
+                ':account_id' => $account_id
+            ), Kohana_Exception::E_RESOURCE_NOT_FOUND);
+        }
+
+        // Return owner id
+        return $account_model->get('owner_id');
     }
 
     /**
@@ -319,9 +262,8 @@ class Kohana_Account_Manager {
      */
     public function change_account_owner($account_id, $user_id)
     {
-        $account_model = $this->account_model();
-        $account_model->begin();
-        $account_cache = self::$use_cache ? Account_Cache::instance() : NULL;
+        // Start the transaction
+        $this->begin_transaction();
 
         try
         {
@@ -334,28 +276,18 @@ class Kohana_Account_Manager {
             ));
 
             // Add the `owner` permission to the given user
-            $account_model->grant_permission($account_id, $user_id, self::PERM_OWNER);
+            $this->grant_permission($account_id, $user_id, Model_Account::PERM_OWNER, FALSE);
 
-            if (self::$use_cache)
-            {
-                $account_cache->grant_account_permission($user_id, $account_id, self::PERM_OWNER);
-            }
-
-            // Remove the 'owner' permission from the previous owner
-            $account_model->revoke_permission($account_id, $owner_data['user_id'], self::PERM_OWNER);
-
-            if (self::$use_cache)
-            {
-                $account_cache->revoke_account_permission($owner_data['user_id'], $account_id, self::PERM_OWNER);
-            }
+            // Remove the `owner` permission from the previous owner
+            $this->revoke_permission($account_id, $owner_data['user_id'], Model_Account::PERM_OWNER, FALSE);
 
             // Everything is fine, commit
-            $account_model->commit();
+            $this->commit_transaction();
         }
         catch (Exception $e)
         {
-            // Problem with the database, rollback
-            $account_model->rollback();
+            // Something went wrong, rollback
+            $this->rollback_transaction();
 
             // Re-throw the exception
             throw $e;
@@ -373,26 +305,21 @@ class Kohana_Account_Manager {
      */
     public function add_user($account_id, $user_id, $inviter_id, $status)
     {
-        $account_model = $this->account_model();
-        $account_model->begin();
+        // Begin transaction
+        $this->begin_transaction();
 
         try
         {
-            $account_model->add_user($account_id, $user_id, $inviter_id, $status);
+            $this->account_model()->add_user($account_id, $user_id, $inviter_id, $status);
+            self::$use_cache && $this->cache()->sync_accounts($user_id);
 
-            if (self::$use_cache)
-            {
-                $account_cache = Account_Cache::instance();
-                $account_cache->add_account($user_id, $account_id);
-            }
-
-            // Everything is fine, commit
-            $account_model->commit();
+            // Everything was going fine, commit
+            $this->commit_transaction();
         }
         catch (Exception $e)
         {
-            // Problem with the cache, rollback
-            $account_model->rollback();
+            // Something went wrong, rollback
+            $this->rollback_transaction();
 
             // Re-throw the exception
             throw $e;
@@ -413,7 +340,12 @@ class Kohana_Account_Manager {
     {
         $self_remove = $remover_id == $user_id;
         $send_leaving_email = $self_remove && ! empty($leaving_message);
-        $status = $self_remove ? self::STATUS_USER_LEFT : self::STATUS_USER_REMOVED;
+        $status = $self_remove
+            ? Model_Account::STATUS_USER_LEFT
+            : Model_Account::STATUS_USER_REMOVED;
+
+        // Get the user manager
+        $user_manager = User_Manager::instance();
 
         // Get data about the account owner
         $owner_data = $this->get_account_owner_data($account_id);
@@ -421,14 +353,14 @@ class Kohana_Account_Manager {
         // Make sure the user is not the account owner
         if ($user_id == $owner_data['user_id'])
         {
-            throw new Account_Exception('The account owner can not be removed.');
+            throw new Account_Exception(Account_Exception::E_OWNER_CAN_NOT_BE_REMOVED);
         }
 
-        // Check if the user removed himself and wants to send a leaving email to his inviter
+        // Check if the user removed himself and wants to send a leaving email to the account owner
         if ($send_leaving_email)
         {
             // Prepare data for the leaving email
-            $invitee_data = User_Manager::instance()->get_user_data($user_id);
+            $invitee_data = $user_manager->get_user_data($user_id);
 
             $data = array(
                 'account_owner_data'    => $owner_data,
@@ -437,39 +369,27 @@ class Kohana_Account_Manager {
             );
         }
 
-        $account_model = $this->account_model();
-        $account_model->begin();
-        $account_cache = self::$use_cache ? Account_Cache::instance() : NULL;
+        // Begin transaction
+        $this->begin_transaction();
 
         try
         {
-            // Update user status
-            $account_model->set_user_status($account_id, $user_id, $status);
+            // Update user status on the account
+            $this->set_user_status($account_id, $user_id, $status);
+
+            // Revoke all permissions from the user on this account
+            $this->revoke_all_permissions($account_id, $user_id);
 
             // Remove all invitation links for the user on this account
-            ORM::factory('Account_Invitation_Link')->delete_all($account_cache, $user_id);
+            ORM::factory('Account_Invitation_Link')->delete_all($account_id, $user_id);
 
-            if (self::$use_cache)
-            {
-                // Update the cache
-                $account_cache->remove_account($user_id, $account_id);
-            }
-
-            // Revoke all permission from the user on this account
-            $account_model->revoke_all_permissions($account_id, $user_id);
-
-            if (self::$use_cache)
-            {
-                $account_cache->revoke_all_account_permission($user_id, $account_id);
-            }
-
-            // Everything is fine, commit
-            $account_model->commit();
+            // Everything was going fine, commit
+            $this->commit_transaction();
         }
         catch (Exception $e)
         {
-            // Problem with the database, rollback
-            $account_model->rollback();
+            // Something went wrong, rollback
+            $this->rollback_transaction();
 
             // Re-throw the exception
             throw $e;
@@ -516,23 +436,21 @@ class Kohana_Account_Manager {
     {
         if (self::$use_cache)
         {
-            $account_cache = Account_Cache::instance();
-            $account_cache->update_only(FALSE);
-            $user_account_ids = $account_cache->load_accounts($user_id);
+            $user_account_ids = $this->cache()->load_accounts($user_id);
 
-            // Check if the data from cache is an empty array (in case of nonexistent data)
+            // Check if data from cache is not NULL
             if ( ! isset($user_account_ids))
             {
-                // Load from DB
+                // Load account ids from DB
                 $user_account_ids = $this->account_model()->get_user_account_ids($user_id);
 
-                // Save to cache
-                $account_cache->save_accounts($user_id, $user_account_ids);
+                // Sync the cache
+                $this->cache()->sync_accounts($user_id, $user_account_ids);
             }
         }
         else
         {
-            // Load from DB
+            // Load account ids from DB
             $user_account_ids = $this->account_model()->get_user_account_ids($user_id);
         }
 
@@ -545,10 +463,25 @@ class Kohana_Account_Manager {
      * @param   int     $account_id
      * @param   int     $user_id
      * @param   string  $status
+     * @throws  Exception
      */
     public function set_user_status($account_id, $user_id, $status)
     {
-        $this->account_model()->set_user_status($account_id, $user_id, $status);
+        $this->begin_transaction();
+
+        try
+        {
+            $this->account_model()->set_user_status($account_id, $user_id, $status);
+            self::$use_cache && $this->cache()->sync_accounts($user_id);
+
+            // Everything was going fine, commit
+            $this->commit_transaction();
+        }
+        catch (Exception $e)
+        {
+            // Something went wrong, rollback
+            $this->rollback_transaction();
+        }
     }
 
     /**
@@ -572,7 +505,7 @@ class Kohana_Account_Manager {
      */
     public function is_user_linked($account_id, $user_id)
     {
-        return $this->get_user_status($account_id, $user_id) == self::STATUS_USER_LINKED;
+        return $this->get_user_status($account_id, $user_id) == Model_Account::STATUS_USER_LINKED;
     }
 
     /**
@@ -584,7 +517,7 @@ class Kohana_Account_Manager {
      */
     public function is_user_invited($account_id, $user_id)
     {
-        return $this->get_user_status($account_id, $user_id) == self::STATUS_USER_INVITED;
+        return $this->get_user_status($account_id, $user_id) == Model_Account::STATUS_USER_INVITED;
     }
 
     /**
@@ -596,7 +529,7 @@ class Kohana_Account_Manager {
      */
     public function is_user_removed($account_id, $user_id)
     {
-        return $this->get_user_status($account_id, $user_id) == self::STATUS_USER_REMOVED;
+        return $this->get_user_status($account_id, $user_id) == Model_Account::STATUS_USER_REMOVED;
     }
 
     /**
@@ -608,7 +541,7 @@ class Kohana_Account_Manager {
      */
     public function is_user_left($account_id, $user_id)
     {
-        return $this->get_user_status($account_id, $user_id) == self::STATUS_USER_LEFT;
+        return $this->get_user_status($account_id, $user_id) == Model_Account::STATUS_USER_LEFT;
     }
 
     /**
@@ -657,26 +590,21 @@ class Kohana_Account_Manager {
      */
     public function grant_permission($account_id, $user_id, $permission)
     {
-        $account_model = $this->account_model();
-        $account_model->begin();
+        // Begin transaction
+        $this->begin_transaction();
 
         try
         {
-            $account_model->grant_permission($account_id, $user_id, $permission);
-
-            if (self::$use_cache)
-            {
-                $account_cache = Account_Cache::instance();
-                $account_cache->grant_account_permission($user_id, $account_id, $permission);
-            }
+            $this->account_model()->grant_permission($account_id, $user_id, $permission);
+            self::$use_cache && $this->cache()->sync_account_permissions($user_id, $account_id);
 
             // Everything is fine, commit
-            $account_model->commit();
+            $this->commit_transaction();
         }
         catch (Exception $e)
         {
-            // Problem with the cache, rollback
-            $account_model->rollback();
+            // Something went wrong, rollback
+            $this->rollback_transaction();
 
             // Re-throw the exception
             throw $e;
@@ -693,26 +621,21 @@ class Kohana_Account_Manager {
      */
     public function revoke_permission($account_id, $user_id, $permission)
     {
-        $account_model = $this->account_model();
-        $account_model->begin();
+        // Begin transaction
+        $this->begin_transaction();
 
         try
         {
-            $account_model->revoke_permission($account_id, $user_id, $permission);
-
-            if (self::$use_cache)
-            {
-                $account_cache = Account_Cache::instance();
-                $account_cache->revoke_account_permission($user_id, $account_id, $permission);
-            }
+            $this->account_model()->revoke_permission($account_id, $user_id, $permission);
+            self::$use_cache && $this->cache()->sync_account_permissions($user_id, $account_id);
 
             // Everything is fine, commit
-            $account_model->commit();
+            $this->commit_transaction();
         }
         catch (Exception $e)
         {
-            // Problem with the cache, rollback
-            $account_model->rollback();
+            // Something went wrong, rollback
+            $this->rollback_transaction();
 
             // Re-throw the exception
             throw $e;
@@ -728,26 +651,21 @@ class Kohana_Account_Manager {
      */
     public function revoke_all_permissions($account_id, $user_id)
     {
-        $account_model = $this->account_model();
-        $account_model->begin();
+        // Begin transaction
+        $this->begin_transaction();
 
         try
         {
-            $account_model->revoke_all_permissions($account_id, $user_id);
-
-            if (self::$use_cache)
-            {
-                $account_cache = Account_Cache::instance();
-                $account_cache->revoke_all_account_permissions($user_id, $account_id);
-            }
+            $this->account_model()->revoke_all_permissions($account_id, $user_id);
+            self::$use_cache && $this->cache()->sync_account_permissions($user_id, $account_id, array());
 
             // Everything is fine, commit
-            $account_model->commit();
+            $this->commit_transaction();
         }
         catch (Exception $e)
         {
-            // Problem with the cache, rollback
-            $account_model->rollback();
+            // Something went wrong, rollback
+            $this->rollback_transaction();
 
             // Re-throw the exception
             throw $e;
@@ -765,26 +683,24 @@ class Kohana_Account_Manager {
     {
         if (self::$use_cache)
         {
-            $account_cache = Account_Cache::instance();
-            $account_cache->update_only(FALSE);
-            $user_permissions = $account_cache->load_account_permissions($user_id, $account_id);
+            $permissions = $this->cache()->load_account_permissions($user_id, $account_id);
 
-            if ( ! isset($user_permissions))
+            if ( ! isset($permissions))
             {
                 // Load from DB
-                $user_permissions = $this->account_model()->get_permissions($account_id, $user_id);
+                $permissions = $this->account_model()->get_permissions($account_id, $user_id);
 
                 // Save to cache
-                $account_cache->save_account_permissions($user_id, $account_id, $user_permissions);
+                $this->cache()->sync_account_permissions($user_id, $account_id, $permissions);
             }
         }
         else
         {
             // Load from DB
-            $user_permissions = $this->account_model()->get_permissions($account_id, $user_id);
+            $permissions = $this->account_model()->get_permissions($account_id, $user_id);
         }
 
-        return $user_permissions;
+        return $permissions;
     }
 
     /**
@@ -817,14 +733,14 @@ class Kohana_Account_Manager {
     }
 
     /**
-     * Check if there is an account created by the user with the given email address
+     * Check if there is an account created by the given user
      *
-     * @param   int     $email
+     * @param   int     $user_id
      * @return  bool
      */
-    public function unique_email($email)
+    public function user_has_account($user_id)
     {
-        return $this->account_model()->unique_email($email);
+        return $this->account_model()->user_has_account($user_id);
     }
 
     /**
@@ -832,13 +748,7 @@ class Kohana_Account_Manager {
      */
     public function garbage_collector()
     {
-        // Get the grace period
-        $grace_period = Kohana::$config->load('account')->get('account_cancellation_grace_period');
-
-        // Calculate date limit
-        $start_date = date('Y-m-d H:i:s', time() - $grace_period * 24 * 3600);
-
-        $this->account_model()->garbage_collector($start_date);
+        $this->account_model()->garbage_collector(time());
     }
 
     /**
@@ -854,21 +764,6 @@ class Kohana_Account_Manager {
         }
 
         return $this->_account_model;
-    }
-
-    /**
-     * Returns a singleton instance of the class
-     *
-     * @return  Account_Manager
-     */
-    public static function instance()
-    {
-        if ( ! Account_Manager::$_instance instanceof Account_Manager)
-        {
-            Account_Manager::$_instance = new Account_Manager();
-        }
-
-        return Account_Manager::$_instance;
     }
 }
 
