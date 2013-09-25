@@ -261,6 +261,12 @@ class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
             throw new Account_Exception(Account_Exception::E_INVITATION_LINK_INVALID);
         }
 
+        // Make sure the invitation link was created for this user
+        if ($invitation_link_model->get('invitee_id') != $user_id)
+        {
+            throw new Account_Exception(Account_Exception::E_INVITATION_EMAIL_MISMATCH);
+        }
+
         // Get the account manager
         $account_manager = Account_Manager::instance();
 
