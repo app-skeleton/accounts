@@ -2,13 +2,13 @@
 
 return array(
     // Grace period before we actually delete all the data for a canceled account (in days)
-    'account_cancellation_grace_period' => 30,
+    'account_cancellation_grace_period' => 30 * 24 * 3600,
 
     // Grace period before we set an expiring subscription expired
-    'subscription_expiration_grace_period' => 5,
+    'subscription_expiration_grace_period' => 5 * 24 * 3600,
 
     // Grace period before we delete items from trash
-    'trash_grace_period' => 30,
+    'trash_grace_period' => 30 * 24 * 3600,
 
     // Account invitation settings
     'account_invitation' => array(
@@ -28,7 +28,7 @@ return array(
         ),
 
         // Invitation link lifetime in days
-        'link_lifetime' => 7
+        'link_lifetime' => 7 * 24 * 3600
     ),
 
     // Account leaving settings

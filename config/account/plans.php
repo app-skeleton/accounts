@@ -1,4 +1,5 @@
 <?php defined('SYSPATH') OR die('No direct access allowed.');
+
 return array(
     // Plans
     'trial' => array(
@@ -7,7 +8,7 @@ return array(
         ),
 
         // Time limit in days
-        'time_limit' => 90
+        'time_limit' => 90 * 24 * 3600
     ),
 
     'starter' => array(

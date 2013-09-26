@@ -32,7 +32,7 @@ class Kohana_Subscription_Manager extends Account_Service_Manager {
         try
         {
             $plan_list = Kohana::$config->load('account/plans');
-            $expires_on = date('Y-m-d H:i:s', time() + $plan_list[$plan]['time_limit'] * 24 * 3600);
+            $expires_on = date('Y-m-d H:i:s', time() + $plan_list[$plan]['time_limit']);
 
             // Create the subscription
             $subscription_model = ORM::factory('Subscription')
@@ -189,7 +189,7 @@ class Kohana_Subscription_Manager extends Account_Service_Manager {
             ORM::factory('Account_Deletion_Request')
                 ->set('account_id', $account_id)
                 ->set('requested_by', $requested_by)
-                ->set('due_on', date('Y-m-d H:i:s', time() + $grace_period * 24 *3600))
+                ->set('due_on', date('Y-m-d H:i:s', time() + $grace_period))
                 ->save();
 
             if (self::$use_cache)
@@ -297,7 +297,7 @@ class Kohana_Subscription_Manager extends Account_Service_Manager {
         // Get expiration time
         $expires_on = strtotime($subscription_data['expires_on']);
 
-        return ($subscription_data['expired'] == 1) || (time() > $expires_on + $grace_period * 24 *3600);
+        return ($subscription_data['expired'] == 1) || (time() > $expires_on + $grace_period);
     }
 
     /**
@@ -320,7 +320,7 @@ class Kohana_Subscription_Manager extends Account_Service_Manager {
         // Get expiration time
         $expires_on = strtotime($subscription_data['expires_on']);
 
-        return ($now > $expires_on) && ($now <= $expires_on + $grace_period * 24 *3600);
+        return ($now > $expires_on) && ($now <= $expires_on + $grace_period);
     }
 
     /**

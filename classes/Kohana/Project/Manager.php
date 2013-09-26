@@ -167,7 +167,7 @@ class Kohana_Project_Manager extends Account_Service_Manager {
                 // Create a project deletion request
                 ORM::factory('Project_Deletion_Request')
                     ->set('project_id', $project_id)
-                    ->set('due_on', date('Y-m-d H:i:s', time() + $grace_period * 24 * 3600))
+                    ->set('due_on', date('Y-m-d H:i:s', time() + $grace_period))
                     ->save();
             }
             else

@@ -143,7 +143,7 @@ class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
                         ->set('invitee_id', $invitee_id)
                         ->set('email', $email)
                         ->set('secure_key', $secure_key)
-                        ->set('expires_on', date('Y-m-d H:i:s', time() + $config['link_lifetime'] * 24 * 3600))
+                        ->set('expires_on', date('Y-m-d H:i:s', time() + $config['link_lifetime']))
                         ->save();
                 }
 
@@ -217,6 +217,9 @@ class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
             // Signup the user
             $models_data = $user_manager->signup_user($signup_values);
 
+            Debugger::variable($account_id);
+            Debugger::variable($models_data);
+
             // Set user's status on the account
             $account_manager->set_user_status($account_id, $models_data['user']['user_id'], Model_Account::STATUS_USER_LINKED);
 
@@ -259,12 +262,6 @@ class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
         if ( ! $invitation_link_model->loaded())
         {
             throw new Account_Exception(Account_Exception::E_INVITATION_LINK_INVALID);
-        }
-
-        // Make sure the invitation link was created for this user
-        if ($invitation_link_model->get('invitee_id') != $user_id)
-        {
-            throw new Account_Exception(Account_Exception::E_INVITATION_EMAIL_MISMATCH);
         }
 
         // Get the account manager
