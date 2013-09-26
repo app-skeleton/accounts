@@ -590,6 +590,26 @@ class Kohana_Account_Manager extends Account_Service_Manager {
      */
     public function grant_permission($account_id, $user_id, $permission)
     {
+        // Make sure `permission` is an array
+        $permission = (array) $permission;
+
+        // Some permissions automatically implies others
+        if (in_array(Model_Account::PERM_ADMIN, $permission))
+        {
+            $permission = array_unique(array_merge($permission, array(
+                Model_Account::PERM_CREATE_PROJECTS
+            )));
+        }
+
+        if (in_array(Model_Account::PERM_OWNER, $permission))
+        {
+            $permission = array_unique(array_merge($permission, array(
+                Model_Account::PERM_CREATE_PROJECTS,
+                Model_Account::PERM_ADMIN,
+                Model_Account::PERM_ACCOUNT_MANAGER
+            )));
+        }
+
         // Begin transaction
         $this->begin_transaction();
 
