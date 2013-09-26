@@ -47,7 +47,7 @@ class Kohana_Account_Manager extends Account_Service_Manager {
             if (empty($user_id))
             {
                 // Sign up the user
-                $models_data = $user_manager->signup_user($user_values, FALSE);
+                $models_data = $user_manager->signup_user($user_values);
                 $user_id = $models_data['user']['user_id'];
 
                 // Make sure we have an account name
@@ -108,7 +108,7 @@ class Kohana_Account_Manager extends Account_Service_Manager {
             }
 
             // Save the subscription
-            $models_data['subscription'] = $subscription_manager->create_subscription($account_id, $plan, FALSE);
+            $models_data['subscription'] = $subscription_manager->create_subscription($account_id, $plan);
 
             // Everything was going fine, commit
             $this->commit_transaction();
@@ -276,10 +276,10 @@ class Kohana_Account_Manager extends Account_Service_Manager {
             ));
 
             // Add the `owner` permission to the given user
-            $this->grant_permission($account_id, $user_id, Model_Account::PERM_OWNER, FALSE);
+            $this->grant_permission($account_id, $user_id, Model_Account::PERM_OWNER);
 
             // Remove the `owner` permission from the previous owner
-            $this->revoke_permission($account_id, $owner_data['user_id'], Model_Account::PERM_OWNER, FALSE);
+            $this->revoke_permission($account_id, $owner_data['user_id'], Model_Account::PERM_OWNER);
 
             // Everything is fine, commit
             $this->commit_transaction();
