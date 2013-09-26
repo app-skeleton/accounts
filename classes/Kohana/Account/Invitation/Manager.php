@@ -32,7 +32,7 @@ class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
         // Check for invalid emails
         if (empty($emails))
         {
-            throw new Validation_Exception(NULL, 'No emails specified.');
+            throw new Validation_Exception(array(), 'No emails specified.');
         }
 
         $invalid_emails = array();
@@ -79,8 +79,8 @@ class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
                     // Create a ghost identity
                     ORM::factory('Ghost_Identity')
                         ->values(array(
-                            'email' => $email,
                             'user_id' => $ghost_user_model->pk(),
+                            'email' => $email,
                             'status' => Model_Identity::STATUS_INVITED
                         ))
                         ->save();
@@ -91,7 +91,7 @@ class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
                 // Grant the given permissions to the user
                 if ( ! empty($permissions))
                 {
-                    $account_manager->grant_permission($account_id, $invitee_id, $permissions, FALSE);
+                    $account_manager->grant_permission($account_id, $invitee_id, $permissions);
                 }
 
                 // Get user status on the given account
@@ -117,13 +117,13 @@ class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
                 if ( ! $is_linked && ! $is_invited)
                 {
                     // Add the user to the account
-                    $account_manager->add_user($account_id, $invitee_id, $inviter_id, Model_Account::STATUS_USER_INVITED, FALSE);
+                    $account_manager->add_user($account_id, $invitee_id, $inviter_id, Model_Account::STATUS_USER_INVITED);
                 }
 
                 if ( ! empty($project_ids))
                 {
                     // Add the user to the projects
-                    $project_manager->add_user($project_ids, $invitee_id, FALSE);
+                    $project_manager->add_user($project_ids, $invitee_id);
                 }
 
                 // Check if an invitation link was already generated for this user and account
@@ -153,8 +153,8 @@ class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
                     'account_data'  => $account_data,
                     'inviter_data'  => $inviter_data,
                     'projects'      => ! empty($project_ids) ? $project_manager->get_project_data($project_ids) : array(),
-                    'accept_url'    => URL::map('invitation.accept', array($account_id, $secure_key)),
-                    'decline_url'   => URL::map('invitation.decline', array($account_id, $secure_key)),
+                    'accept_url'    => URL::map('invitation.accept', array($account_id, $invitation_link->get('secure_key'))),
+                    'decline_url'   => URL::map('invitation.decline', array($account_id, $invitation_link->get('secure_key'))),
                 );
 
                 // Send the invitation email
@@ -206,7 +206,7 @@ class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
         // Get the account manager
         $account_manager = Account_Manager::instance();
 
-        // Set email address in signup values
+        // Set email address signup values
         $signup_values['email'] = $invitation_link_model->get('email');
 
         // Begin transaction
@@ -215,10 +215,10 @@ class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
         try
         {
             // Signup the user
-            $models_data = $user_manager->signup_user($signup_values, FALSE);
+            $models_data = $user_manager->signup_user($signup_values);
 
             // Set user's status on the account
-            $account_manager->set_user_status($account_id, $models_data['user']['user_id'], Model_Account::STATUS_USER_LINKED, FALSE);
+            $account_manager->set_user_status($account_id, $models_data['user']['user_id'], Model_Account::STATUS_USER_LINKED);
 
             // Delete the link
             $invitation_link_model->delete();
@@ -276,7 +276,7 @@ class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
         try
         {
             // Update user's status on the account
-            $account_manager->set_user_status($account_id, $user_id, Model_Account::STATUS_USER_LINKED, FALSE);
+            $account_manager->set_user_status($account_id, $user_id, Model_Account::STATUS_USER_LINKED);
 
             // Delete the link
             $invitation_link_model->delete();
@@ -330,7 +330,7 @@ class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
         try
         {
             // Decline the invitation
-            $account_manager->set_user_status($account_id, $invitee_id, Model_Account::STATUS_USER_LEFT, FALSE);
+            $account_manager->set_user_status($account_id, $invitee_id, Model_Account::STATUS_USER_LEFT);
 
             // Delete the link
             $invitation_link_model->delete();
