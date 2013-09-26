@@ -8,8 +8,19 @@
  *
  */
 
-class Kohana_Model_Ghost_Identity extends Model_Identity {
+class Kohana_Model_Ghost_Identity extends ORM {
 
+    protected $_table_name = 'user_identities';
+
+    protected $_primary_key = 'identity_id';
+
+    protected $_table_columns = array(
+        'identity_id' => array(),
+        'user_id' => array(),
+        'password' => array(),
+        'email' => array(),
+        'status' => array()
+    );
 }
 
 // END Kohana_Model_Ghost_Identity
