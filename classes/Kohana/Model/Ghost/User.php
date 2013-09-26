@@ -8,8 +8,18 @@
  *
  */
 
-class Kohana_Model_Ghost_User extends Model_User {
+class Kohana_Model_Ghost_User extends ORM {
 
+    protected $_table_name = 'users';
+
+    protected $_primary_key = 'user_id';
+
+    protected $_table_columns = array(
+        'user_id' => array(),
+        'first_name' => array(),
+        'last_name' => array(),
+        'timezone' => array()
+    );
 }
 
 // END Kohana_Model_Ghost_User
