@@ -78,8 +78,7 @@ class Kohana_Model_Account extends ORM {
             'u.user_id',
             'u.first_name',
             'u.last_name',
-            'ui.username',
-            'ui.email',
+            'ui.email'
         ))
             ->from(array('accounts', 'a'))
             ->join(array('users', 'u'))
@@ -126,7 +125,6 @@ class Kohana_Model_Account extends ORM {
             'u.user_id',
             'u.first_name',
             'u.last_name',
-            'ui.username',
             'ui.email',
             'au.status',
             array(DB::expr('a.owner_id = u.user_id'), 'is_owner'),
@@ -241,7 +239,6 @@ class Kohana_Model_Account extends ORM {
             'u.user_id',
             'u.first_name',
             'u.last_name',
-            'ui.username',
             'ui.email'
         ))
             ->from(array('users', 'u'))

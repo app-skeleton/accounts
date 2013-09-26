@@ -168,7 +168,6 @@ class Kohana_Model_Project extends ORM {
             'u.user_id',
             'u.first_name',
             'u.last_name',
-            'ui.username',
             'ui.email'
         ))
             ->from(array('users', 'u'))
