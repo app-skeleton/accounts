@@ -11,6 +11,13 @@
 class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
 
     /**
+     * Singleton instance
+     *
+     * @var Account_Invitation_Manager  Singleton instance of the Account Invitation Manager
+     */
+    protected static $_instance;
+
+    /**
      * Create and send an invitation
      *
      * @param   string|array    $emails
@@ -388,6 +395,21 @@ class Kohana_Account_Invitation_Manager extends Account_Service_Manager {
     public function garbage_collector()
     {
         ORM::factory('Account_Invitation_Link')->garbage_collector(time());
+    }
+
+    /**
+     * Create a singleton instance of the class
+     *
+     * @return	Account_Invitation_Manager
+     */
+    public static function instance()
+    {
+        if ( ! Account_Invitation_Manager::$_instance instanceof Account_Invitation_Manager)
+        {
+            Account_Invitation_Manager::$_instance = new Account_Invitation_Manager();
+        }
+
+        return Account_Invitation_Manager::$_instance;
     }
 }
 

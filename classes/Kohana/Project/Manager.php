@@ -11,6 +11,13 @@
 class Kohana_Project_Manager extends Account_Service_Manager {
 
     /**
+     * Singleton instance
+     *
+     * @var Project_Manager         Singleton instance of the Project Manager
+     */
+    protected static $_instance;
+
+    /**
      * @var ORM                     An instance of the Model_Project class
      */
     protected $_project_model;
@@ -468,6 +475,21 @@ class Kohana_Project_Manager extends Account_Service_Manager {
         }
 
         return $this->_project_model;
+    }
+
+    /**
+     * Create a singleton instance of the class
+     *
+     * @return	Project_Manager
+     */
+    public static function instance()
+    {
+        if ( ! Project_Manager::$_instance instanceof Project_Manager)
+        {
+            Project_Manager::$_instance = new Project_Manager();
+        }
+
+        return Project_Manager::$_instance;
     }
 }
 

@@ -11,6 +11,13 @@
 class Kohana_Subscription_Manager extends Account_Service_Manager {
 
     /**
+     * Singleton instance
+     *
+     * @var Subscription_Manager    Singleton instance of the Subscription Manager
+     */
+    protected static $_instance;
+
+    /**
      * @var ORM                     An instance of the Model_Subscription class
      */
     protected $_subscription_model;
@@ -542,6 +549,21 @@ class Kohana_Subscription_Manager extends Account_Service_Manager {
         }
 
         return $this->_subscription_model;
+    }
+
+    /**
+     * Create a singleton instance of the class
+     *
+     * @return	Subscription_Manager
+     */
+    public static function instance()
+    {
+        if ( ! Subscription_Manager::$_instance instanceof Subscription_Manager)
+        {
+            Subscription_Manager::$_instance = new Subscription_Manager();
+        }
+
+        return Subscription_Manager::$_instance;
     }
 }
 

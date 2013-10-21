@@ -11,6 +11,13 @@
 class Kohana_Account_Manager extends Account_Service_Manager {
 
     /**
+     * Singleton instance
+     *
+     * @var Account_Manager     Singleton instance of the Account Manager
+     */
+    protected static $_instance;
+
+    /**
      * @var ORM                 An instance of the Model_Account class
      */
     protected $_account_model;
@@ -784,6 +791,21 @@ class Kohana_Account_Manager extends Account_Service_Manager {
         }
 
         return $this->_account_model;
+    }
+
+    /**
+     * Create a singleton instance of the class
+     *
+     * @return	Account_Manager
+     */
+    public static function instance()
+    {
+        if ( ! Account_Manager::$_instance instanceof Account_Manager)
+        {
+            Account_Manager::$_instance = new Account_Manager();
+        }
+
+        return Account_Manager::$_instance;
     }
 }
 
