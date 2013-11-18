@@ -1,0 +1,29 @@
+{
+	"name":        "app-skeleton/accounts",
+	"type":        "kohana-module",
+	"description": "Account manager module for Kohana",
+	"homepage":    "https://github.com/app-skeleton/accounts",
+	"license":     "BSD-3-Clause",
+	"keywords":    ["kohana", "framework", "accounts"],
+	"authors": [
+		{
+			"name":     "Pap Tamas",
+			"email":    "paptamas@gmail.com",
+			"homepage": "https://github.com/paptamas",
+			"role":     "developer"
+		}
+	],
+	"support": {
+		"issues":   "https://github.com/app-skeleton/accounts/issues"
+	},
+	"require": {
+		"composer/installers": 	"~1.0",
+		"app-skeleton/auth":	"dev-3.3/master",
+		"php":                 	">=5.3.3"
+	},
+	"extra": {
+		"branch-alias": {
+			"dev-3.3/develop": "3.3.x-dev"
+		}
+	}
+}
