@@ -17,8 +17,7 @@
 		"issues":   "https://github.com/app-skeleton/accounts/issues"
 	},
 	"require": {
-		"composer/installers": 	"~1.0",
-		"app-skeleton/auth":	"dev-3.3/master",
+		"composer/installers": 	"~1.0",		
 		"php":                 	">=5.3.3"
 	},
 	"extra": {
